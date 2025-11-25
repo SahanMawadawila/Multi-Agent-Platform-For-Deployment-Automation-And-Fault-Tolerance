@@ -12,7 +12,7 @@ export default function HomePriceCards() {
     }
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto" id="pricing">
             {/* Basic Plan */}
             <Card className="rounded-xl border  bg-slate-950/50 text-slate-100 shadow-sm p-8 flex flex-col border-slate-800 hover:border-slate-700 transition-all relative overflow-hidden ">
               <div className="mb-8">
