@@ -1,169 +1,130 @@
 "use client";
-
 import { useCallback } from "react";
-import ReactFlow, {
+import {
+  ReactFlow,
   Controls,
-  Background,
   useNodesState,
   useEdgesState,
   addEdge,
+  type Node,
+  type Edge,
+  type OnConnect,
 } from "reactflow";
 import { Server, Database } from "lucide-react";
-import { SingleNode } from "./single-node";
 
 import "reactflow/dist/style.css";
 
-// 1. Define your initial nodes
-const initialNodes = [
+import TurboNode, { type TurboNodeData } from "./turbo-node";
+import TurboEdge from "./turbo-edge";
+
+const initialNodes: Node<TurboNodeData>[] = [
   {
-    id: "node-1",
+    id: "1",
     position: { x: 0, y: 0 },
-    data: {
-      label: <Server className="w-6 h-6 text-blue-600" />,
-    },
-    type: "singleNode",
+    data: { icon: <Server size={24} /> },
+    type: "turbo",
   },
   {
-    id: "node-2",
-    position: { x: 0, y: 100 },
-    data: {
-      label: <Server className="w-6 h-6 text-blue-600" />,
-    },
-    type: "singleNode",
+    id: "2",
+    position: { x: 250, y: 0 },
+    data: { icon: <Server size={24} /> },
+    type: "turbo",
   },
   {
-    id: "node-3",
-    position: { x: 0, y: 200 },
-    data: {
-      label: <Server className="w-6 h-6 text-blue-600" />,
-    },
-    type: "singleNode",
+    id: "3",
+    position: { x: 500, y: 0 },
+    data: { icon: <Server size={24} /> },
+    type: "turbo",
   },
   {
-    id: "node-4",
-    position: { x: 0, y: 300 },
-    data: {
-      label: <Server className="w-6 h-6 text-blue-600" />,
-    },
-    type: "singleNode",
+    id: "4",
+    data: { icon: <Database size={24} /> },
+    position: { x: 250, y: 150 },
+    type: "turbo",
   },
   {
-    id: "db-1",
-    type: "singleNode",
-    position: { x: 250, y: 50 },
-    data: {
-      label: <Database className="w-6 h-6 text-blue-600" />,
-    },
-  },
-  {
-    id: "db-2",
-    type: "singleNode",
-    position: { x: 250, y: 200 },
-    data: {
-      label: <Database className="w-6 h-6 text-blue-600" />,
-    },
-  },
-  {
-    id: "db-3",
-    type: "singleNode",
-    position: { x: 250, y: 350 },
-    data: {
-      label: <Database className="w-6 h-6 text-blue-600" />,
-    },
-  },
-  {
-    id: "db-4",
-    type: "singleNode",
-    position: { x: 250, y: 300 },
-    data: {
-      label: <Database className="w-6 h-6 text-blue-600" />,
-    },
-  },
-  {
-    id: "db-5",
-    type: "singleNode",
-    position: { x: 250, y: 400 },
-    data: {
-      label: <Database className="w-6 h-6 text-blue-600" />,
-    },
+    id: "5",
+    position: { x: 750, y: 0 },
+    data: { icon: <Database size={24} /> },
+    type: "turbo",
   },
 ];
 
-// 2. Define your initial edges
-const initialEdges = [
-  {
-    id: "e1-db",
-    source: "node-1",
-    target: "db-1",
-    animated: true,
-    style: { stroke: "#8884d8" },
-  },
-  {
-    id: "e2-db",
-    source: "node-2",
-    target: "db-1",
-    animated: true,
-    style: { stroke: "#8884d8" },
-  },
-  {
-    id: "e3-db",
-    source: "node-2",
-    target: "db-2",
-    animated: true,
-    style: { stroke: "#8884d8" },
-  },
-  {
-    id: "e4-db",
-    source: "node-3",
-    target: "db-2",
-    animated: true,
-    style: { stroke: "#8884d8" },
-  },
-  {
-    id: "e5-db",
-    source: "node-4",
-    target: "db-3",
-    animated: true,
-    style: { stroke: "#8884d8" },
-  },
-  {
-    id: "e6-db",
-    source: "node-4",
-    target: "db-4",
-    animated: true,
-    style: { stroke: "#8884d8" },
-  },
-  {
-    id: "e7-db",
-    source: "node-4",
-    target: "db-5",
-    animated: true,
-    style: { stroke: "#8884d8" },
-  },
+const initialEdges: Edge[] = [
+  { id: "e1-2", source: "1", target: "2" },
+  { id: "e2-3", source: "2", target: "3" },
+  { id: "e2-4", source: "2", target: "4" },
+  { id: "e3-5", source: "3", target: "5" },
 ];
 
-export function ApplicationDiagramViewer() {
+const nodeTypes = {
+  turbo: TurboNode,
+};
+
+const edgeTypes = {
+  turbo: TurboEdge,
+};
+
+const defaultEdgeOptions = {
+  type: "turbo",
+  markerEnd: "edge-arrow",
+};
+
+export const ApplicationDiagramViewer = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  const onConnect = useCallback(
-    (params: any) => setEdges((eds) => addEdge(params, eds)),
-    [setEdges]
+  const onConnect: OnConnect = useCallback(
+    (params) => setEdges((els) => addEdge(params, els)),
+    []
   );
 
   return (
-    <div className="w-[600px] h-[600px]">
+    <div style={{ width: "100%", height: "100%" }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        nodeTypes={{ singleNode: SingleNode }}
+        fitView
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        defaultEdgeOptions={defaultEdgeOptions}
       >
-        <Controls />
-        <Background />
+        <Controls showInteractive={false} />
+        <svg>
+          <defs>
+            <linearGradient id="edge-gradient">
+              <stop offset="0%" stopColor="#ae53ba" />
+              <stop offset="100%" stopColor="#2a8af6" />
+            </linearGradient>
+
+            <marker
+              className="react-flow__arrowhead"
+              id="edge-arrow"
+              markerWidth="20"
+              markerHeight="20"
+              viewBox="-10 -10 20 20"
+              markerUnits="userSpaceOnUse"
+              orient="auto-start-reverse"
+              refX="0"
+              refY="0"
+            >
+              <polyline
+                style={{
+                  strokeWidth: 1,
+                  stroke: "#e92a67",
+                  fill: "#e92a67",
+                }}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                points="-5,-4 0,0 -5,4 -5,-4"
+              />
+            </marker>
+          </defs>
+        </svg>
       </ReactFlow>
     </div>
   );
-}
+};
