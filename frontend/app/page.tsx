@@ -1,3 +1,8 @@
+import { ApplicationDiagramViewer } from "../components/diagram/application-diagram-viewer";
 export default function Home() {
-  return <div>Hello World</div>;
+  return (
+    <main className="w-full h-full">
+      <ApplicationDiagramViewer />
+    </main>
+  );
 }
