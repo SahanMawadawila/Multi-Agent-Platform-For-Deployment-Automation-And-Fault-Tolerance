@@ -37,6 +37,7 @@ const handler = NextAuth({
 
     async jwt({ token, user }) {
       if (user) token.backendId = (user as any).backendId;
+      // console.log("JWT Token:", token);
       return token;
     },
 
