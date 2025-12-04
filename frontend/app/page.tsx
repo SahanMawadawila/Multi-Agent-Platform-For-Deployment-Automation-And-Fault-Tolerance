@@ -9,6 +9,7 @@ export default function AuthButton() {
     return (
       <>
         <button onClick={() => signIn("google")}>Sign in with Google</button>
+        <br />
         <button onClick={() => signIn("github")}>Sign in with GitHub</button>
       </>
     )
