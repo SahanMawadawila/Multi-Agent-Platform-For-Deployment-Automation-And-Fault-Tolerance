@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import DashboardNavbar from "@/components/DashboardNavbar";
 import DashboardFooter from "@/components/DashboardFooter";
+// import { Providers } from "../providers";
 
 // Note: Fonts and Metadata are typically handled in the root layout, 
 // but including them here for completeness if this were a separate entry point.
@@ -21,7 +22,9 @@ export default function DashboardLayout({
           <DashboardNavbar />
           {/* Modified: Set max-width to 1640px for a wider dashboard view */}
           <main className="mx-auto px-4 sm:px-6 lg:px-8 py-8 mb-auto w-full max-w-[1640px]">
-            {children}
+            {/* <Providers> */}
+              {children}
+            {/* </Providers> */}
           </main>
           {/* Reusing the existing Footer component */}
           <DashboardFooter /> 
