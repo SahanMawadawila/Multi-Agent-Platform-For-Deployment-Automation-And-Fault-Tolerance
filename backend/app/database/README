@@ -1,0 +1,90 @@
+Generic single-database configuration.
+
+📌 Database Setup & Migration Guide (PostgreSQL + SQLAlchemy + Alembic)
+
+This project uses PostgreSQL as the database and Alembic for schema migrations.
+Follow the steps below to set up the database and run migrations.
+
+🔧 1. Install PostgreSQL
+
+Download PostgreSQL from the official page:
+
+https://www.postgresql.org/download/
+
+
+During installation you will choose:
+
+PostgreSQL password for user postgres
+
+Default port: 5432
+
+After installation, open pgAdmin or use terminal to create a database.
+
+🗄️ 2. Create a Database
+Using pgAdmin
+
+Open pgAdmin
+
+Right-click Databases → Create → Database
+
+Name it (example): multiagent_db
+
+OR CLI
+createdb multiagent_db
+
+🔐 3. Set Environment Variables
+
+Create a .env file in the backend folder:
+
+DATABASE_URL=postgresql+asyncpg://postgres:YOUR_PASSWORD@localhost:5432/multiagent_db
+JWT_SECRET=your_secret_key_here
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=60
+
+📦 4. Install Dependencies
+
+Make sure your virtual environment is activated:
+
+🔧 5. Initialize Alembic (Run Once)
+alembic init alembic
+
+
+This creates an alembic folder and alembic.ini.
+
+📝 6. Edit alembic.ini
+
+Find the line:
+
+sqlalchemy.url = driver://user:pass@localhost/dbname
+
+
+Replace with:
+
+sqlalchemy.url = %(DATABASE_URL)s
+
+🔧 7. Edit alembic/env.py
+
+Inside env.py, import your models:
+
+from app.models.user import User
+from app.db import Base
+target_metadata = Base.metadata
+
+🏗️ 8. Create & Run Migrations
+Whenever models change, generate a migration:
+alembic revision --autogenerate -m "added provider fields"
+
+Apply migration:
+alembic upgrade head
+
+⬅️ Roll Back Migration
+
+Undo the last migration:
+
+alembic downgrade -1
+
+🔍 Verify the Database
+
+You can check tables in pgAdmin or by using:
+
+SELECT * FROM users;

@@ -1,3 +1,5 @@
+"use client"
+import { useSession, signIn, signOut } from "next-auth/react"
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Chrome, Github, Mail, UserPlus, LogIn, X } from 'lucide-react';
@@ -17,6 +19,8 @@ type AuthModalProps = {
 };
 
 const AuthModals: React.FC<AuthModalProps> = ({ isOpen, onClose, initialView }) => {
+  const { data: session } = useSession()
+  console.log(session)
   const [view, setView] = useState(initialView);
 
   if (!isOpen) return null;
@@ -64,6 +68,7 @@ const AuthModals: React.FC<AuthModalProps> = ({ isOpen, onClose, initialView }) 
         <div className="space-y-3">
           {/* Social Login Buttons */}
           <Button 
+            onClick={() => signIn("google")}
             variant="outline" 
             className="w-full h-10 text-base bg-slate-800 border-slate-700 hover:bg-slate-700 text-white cursor-pointer"
           >
@@ -71,6 +76,7 @@ const AuthModals: React.FC<AuthModalProps> = ({ isOpen, onClose, initialView }) 
             {isSignIn ? 'Sign in with Google' : 'Sign up with Google'}
           </Button>
           <Button 
+            onClick={() => signIn("github")}
             variant="outline" 
             className="w-full h-10 text-base bg-slate-800 border-slate-700 hover:bg-slate-700 text-white cursor-pointer"
           >
