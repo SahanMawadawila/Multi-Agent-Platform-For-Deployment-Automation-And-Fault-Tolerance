@@ -9,6 +9,7 @@ import {
   Server,
   Code
 } from 'lucide-react';
+import Link from 'next/link';
 
 // --- Dummy Data (to be replaced by API calls) ---
 const projects = [
@@ -23,8 +24,10 @@ export default function ProjectList() {
     <div className="lg:col-span-1 space-y-6">
       <div className="flex justify-between items-center border-b border-slate-800 pb-4">
         <h2 className="text-xl font-bold text-white">Current Deployments</h2>
-        <Button className="h-9 px-4 text-sm flex items-center gap-2">
-          <Plus size={16} /> Deploy New Project
+        <Button asChild>
+          <Link href="/dashboard/new-project" className="h-9 px-4 text-sm flex items-center gap-2 inline-flex">
+            <Plus size={16} /> Deploy New Project
+          </Link>
         </Button>
       </div>
 

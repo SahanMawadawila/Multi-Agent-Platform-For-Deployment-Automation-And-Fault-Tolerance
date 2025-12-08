@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import AuthModals from './AuthModals';
 import { OPEN_SIGNUP_MODAL_EVENT } from "@/lib/frontend-events";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
 
 
 const Navbar = () => {
@@ -16,7 +18,9 @@ const Navbar = () => {
   // New state for Auth Modals
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authView, setAuthView] = useState<'signin' | 'signup'>('signin');
-
+  // login status
+  const {status} = useSession();
+  
   const openModal = (view: 'signin' | 'signup') => {
     setAuthView(view);
     setIsAuthModalOpen(true);
@@ -59,9 +63,20 @@ const Navbar = () => {
               <a href="#" className="hover:text-white transition-colors">Solutions</a>
               <a href="/docs" className="hover:text-white transition-colors">Docs</a>
               <a href="/#pricing" className="text-white">Pricing</a>
+              <a href="/#pricing" className="text-white">{status}</a>
             </div>
 
-            <div className="hidden md:flex items-center space-x-4">
+            {status === "authenticated" && <div className="hidden md:flex items-center space-x-4">
+              
+                <Button 
+                  variant="default" 
+                  className="h-9 px-4 bg-white text-black hover:bg-slate-200 shadow-none"
+                  asChild
+                >
+                  <Link href="/dashboard">Go to Dashboard</Link>
+                </Button>
+            </div>}
+            {status !== "authenticated" &&  <div className="hidden md:flex items-center space-x-4">
               <Button 
                 variant="ghost" 
                 className="h-9 px-4"
@@ -76,7 +91,7 @@ const Navbar = () => {
               >
                 Start Building
               </Button>
-            </div>
+            </div>}
 
             <div className="md:hidden">
               <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-slate-300 hover:text-white">
