@@ -30,19 +30,29 @@ const handler = NextAuth({
       if (!res.ok) return false;
 
       const data = await res.json();
+
+      // ⭐️ Save both in user object
       (user as any).backendId = data.user_id;
+      (user as any).backendToken = data.access_token;
 
       return true;
     },
 
     async jwt({ token, user }) {
-      if (user) token.backendId = (user as any).backendId;
-      // console.log("JWT Token:", token);
+      // ⭐️ Save backend data into token
+      if (user) {
+        token.backendId = (user as any).backendId;
+        token.backendToken = (user as any).backendToken; 
+      }
+
       return token;
     },
 
     async session({ session, token }) {
+      // ⭐️ Expose backend data to the client session
       (session.user as any).backendId = token.backendId;
+      session.backendToken = token.backendToken;
+
       return session;
     },
   }
