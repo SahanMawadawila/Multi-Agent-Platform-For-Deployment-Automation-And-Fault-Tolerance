@@ -7,6 +7,7 @@ import {
   CheckCircle, 
   Zap
 } from 'lucide-react';
+import Link from 'next/link';
 
 // --- Sub-Components ---
 
@@ -84,8 +85,10 @@ export default function DashboardPage() {
               />
             </div>
 
-            <Button className="mt-6 h-12 px-8 text-base bg-violet-600 hover:bg-violet-500">
-              Start 3-Step Deployment Now
+            <Button asChild>
+              <Link href="/dashboard/new-project" className="mt-6 h-12 px-8 text-base bg-violet-600 hover:bg-violet-500">
+                Start 3-Step Deployment Now
+              </Link>
             </Button>
           </div>
         </Card>
