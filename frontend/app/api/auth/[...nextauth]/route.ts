@@ -31,7 +31,7 @@ const handler = NextAuth({
 
       const data = await res.json();
 
-      // ⭐️ Save both in user object
+      // Save both in user object
       (user as any).backendId = data.user_id;
       (user as any).backendToken = data.access_token;
 
@@ -39,7 +39,7 @@ const handler = NextAuth({
     },
 
     async jwt({ token, user }) {
-      // ⭐️ Save backend data into token
+      // Save backend data into token
       if (user) {
         token.backendId = (user as any).backendId;
         token.backendToken = (user as any).backendToken; 
@@ -49,7 +49,7 @@ const handler = NextAuth({
     },
 
     async session({ session, token }) {
-      // ⭐️ Expose backend data to the client session
+      // Expose backend data to the client session
       (session.user as any).backendId = token.backendId;
       session.backendToken = token.backendToken;
 
