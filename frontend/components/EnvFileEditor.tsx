@@ -1,6 +1,7 @@
 "use client";
 import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Trash2 } from "lucide-react";
 
 export type EnvVar = { key: string; value: string };
 
@@ -85,8 +86,15 @@ export default function EnvFileEditor({ value, onChange }: {
                 onChange={e => handleEdit(idx, 'value', e.target.value)}
                 className="px-2 py-1 rounded bg-slate-800 text-white border border-slate-700 w-1/2"
               />
-              <Button type="button" size="sm" variant="destructive" onClick={() => handleRemove(idx)}>
-                Remove
+              <Button 
+                type="button" 
+                size="sm" 
+                variant="ghost"
+                onClick={() => handleRemove(idx)}
+                className="text-red-500 hover:text-red-400 hover:bg-red-950/30 cursor-pointer"
+                title="Remove"
+              >
+                <Trash2 className="w-4 h-4" />
               </Button>
             </div>
           ))}
