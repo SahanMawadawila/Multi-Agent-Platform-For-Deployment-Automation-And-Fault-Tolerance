@@ -20,7 +20,6 @@ type AuthModalProps = {
 
 const AuthModals: React.FC<AuthModalProps> = ({ isOpen, onClose, initialView }) => {
   const { data: session } = useSession()
-  console.log(session)
   const [view, setView] = useState(initialView);
 
   if (!isOpen) return null;
