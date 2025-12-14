@@ -18,6 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { signOut, useSession } from "next-auth/react";
+import Link from "next/link";
 
 const DashboardNavbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -31,12 +32,14 @@ const DashboardNavbar = () => {
       <div className=" w-full max-w-[1640px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo / Title */}
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 bg-violet-600 rounded-lg flex items-center justify-center">
-              <Terminal className="text-white" size={20} />
+          <Link href={'/dashboard'} >
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 bg-violet-600 rounded-lg flex items-center justify-center">
+                <Terminal className="text-white" size={20} />
+              </div>
+              <span className="font-bold text-xl tracking-tight text-white">Tool X</span>
             </div>
-            <span className="font-bold text-xl tracking-tight text-white">Tool X</span>
-          </div>
+          </Link>
 
           <div className="flex items-center gap-4">
             Hello! {data?.user?.name}
