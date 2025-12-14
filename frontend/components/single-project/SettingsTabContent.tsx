@@ -2,18 +2,27 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Github, AlertTriangle, Save, Trash2 } from 'lucide-react';
+import { DetailedProject } from '@/types/project';
 
-export default function SettingsTabContent() {
+export default function SettingsTabContent({project}: {project: DetailedProject}) {
     const [projectName, setProjectName] = useState('My Awesome Project');
     const [domainName, setDomainName] = useState('');
     const [githubUrl, setGithubUrl] = useState('https://github.com/username/repo');
     const [autoDeployment, setAutoDeployment] = useState(true);
     const [deleteConfirm, setDeleteConfirm] = useState('');
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+    useEffect(() => {
+        // Load initial project settings
+        setProjectName(project.project_name);
+        setDomainName(project.domain_name || ''); // Assume we fetch this from project data
+        setGithubUrl(project.github_url || '');
+        setAutoDeployment(project.is_auto_deploy_enabled); // Assume we fetch this from project data
+    }, [project]);
 
     const handleSaveGeneral = () => {
         // Save general settings
