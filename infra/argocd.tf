@@ -26,7 +26,7 @@ resource "helm_release" "argocd" {
           alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
           alb.ingress.kubernetes.io/healthcheck-path: /healthz
         hosts:
-          - argocd.local
+          - argocd.${var.domain_name}
     configs:
       params:
         server.insecure: true

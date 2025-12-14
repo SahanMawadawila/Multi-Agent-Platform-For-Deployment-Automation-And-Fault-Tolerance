@@ -45,3 +45,24 @@ output "argocd_password_command" {
   description = "Command to get ArgoCD initial admin password"
   value       = "kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d"
 }
+
+output "argocd_url" {
+  description = "ArgoCD URL"
+  value       = "http://argocd.${var.domain_name}"
+}
+
+# DNS Outputs
+output "nameservers" {
+  description = "Set these nameservers in your domain registrar (GoDaddy) - ONE TIME ONLY"
+  value       = aws_route53_zone.main.name_servers
+}
+
+output "domain_name" {
+  description = "Domain name for the platform"
+  value       = var.domain_name
+}
+
+output "alb_dns_name" {
+  description = "ALB DNS name (for reference)"
+  value       = data.aws_lb.shared_alb.dns_name
+}
