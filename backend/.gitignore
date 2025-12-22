@@ -12,5 +12,3 @@ wheels/
 # Environment variables
 .env
 
-# Alembic migration files
-alembic.ini
