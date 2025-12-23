@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, GitBranch, Zap, Layout } from "lucide-react";
 import EnvFileEditor, { EnvVar } from "./EnvFileEditor";
+import { useSession } from "next-auth/react";
 
 const PROJECT_TYPES = [
   {
@@ -19,14 +20,12 @@ const PROJECT_TYPES = [
 ];
 
 export default function CreateNewProjectForm() {
+  const { data: session } = useSession();
   const [name, setName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
   const [repoStatus, setRepoStatus] = useState<
     "idle" | "loading" | "success" | "error" | "connect"
   >("idle");
-  const [projectType, setProjectType] = useState<
-    "single" | "microservice" | null
-  >(null);
   const [envVars, setEnvVars] = useState<EnvVar[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -60,20 +59,51 @@ export default function CreateNewProjectForm() {
     e.preventDefault();
     setSubmitting(true);
     setError("");
+
+    // Check if user is authenticated
+    if (!session?.backendToken) {
+      setError("Please sign in to create a project.");
+      setSubmitting(false);
+      return;
+    }
+
     try {
-      // TODO: Replace with actual API call
-      await new Promise((res) => setTimeout(res, 1500));
-      // Simulate redirect
-      window.location.href = "/dashboard/project/123";
-      // Example payload:
-      // {
-      //   name,
-      //   repoUrl,
-      //   projectType,
-      //   env: envVars // [{key, value}, ...]
-      // }
-    } catch {
-      setError("Failed to create project.");
+      // Convert envVars array to object: [{key, value}] -> {key: value}
+      const envVariables: Record<string, string> = {};
+      envVars.forEach((env) => {
+        if (env.key.trim()) {
+          envVariables[env.key.trim()] = env.value;
+        }
+      });
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/deploy/`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.backendToken}`,
+          },
+          body: JSON.stringify({
+            project_name: name,
+            github_url: repoUrl,
+            env_variables: envVariables,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to create project");
+      }
+
+      const data = await response.json();
+      // Redirect to the new project page
+      window.location.href = `/dashboard/project/${data.project_id}`;
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to create project."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -136,7 +166,7 @@ export default function CreateNewProjectForm() {
       <Button
         type="submit"
         className="w-full mt-6"
-        disabled={submitting || !name || !repoUrl || !projectType}
+        disabled={submitting || !name || !repoUrl}
       >
         {submitting ? (
           <span className="flex items-center justify-center gap-2">

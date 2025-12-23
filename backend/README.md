@@ -47,3 +47,6 @@ This creates an alembic folder and alembic.ini. These files should pushed to git
 
 5. Apply migration
    alembic upgrade head
+
+6. Create new migration (after making changes to models)
+   alembic revision --autogenerate -m "your_message_here"
