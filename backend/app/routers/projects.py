@@ -59,6 +59,7 @@ Retrieve detailed information about a specific project by its ID.
 async def get_project(
     project_id: str,
     db: AsyncSession = Depends(get_db), user: dict = Depends(get_current_user)):
+    print("Getting project:", project_id, "for user:", user)
     result = await db.execute(
         select(UserProject).where(UserProject.project_id == project_id)
         .where(UserProject.owner_id == int(user["id"]))
@@ -66,9 +67,13 @@ async def get_project(
     project = result.scalars().first()
     if not project:
         return {"error": "Project not found"}
-
+    try:
+        UserProjectDetailOutDTO.model_validate(project)
+    except Exception as e:
+        print(f"Validation error: {e}")
+        return {"error": "Data validation error"}
+    
     return UserProjectDetailOutDTO.from_orm(project)
-
 
 
 """

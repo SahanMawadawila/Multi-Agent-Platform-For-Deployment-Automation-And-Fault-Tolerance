@@ -33,6 +33,10 @@ export function TerminalSocketProvider({
     const [isConnected, setIsConnected] = useState(false);
 
     const connect = useCallback((onmessage: (event: MessageEvent) => void) => {
+        if (!projectId || !accessToken) {
+            console.error('Project ID or access token is missing for terminal websocket connection');
+            return;
+        }
         if (connectDebouncedRef.current) {
             clearTimeout(connectDebouncedRef.current);
         }

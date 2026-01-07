@@ -55,19 +55,6 @@ class UserProject(Base):
         String,
         nullable=True
     )
-    
-    # topology_info JSONB
-    # Uses PostgreSQL-specific JSONB type for efficient storage and querying
-    topology_info = Column(
-        JSONB,
-        nullable=True
-    )
-    
-    # env_variables JSONB
-    env_variables = Column(
-        JSONB,
-        nullable=True
-    )
 
     def __repr__(self):
         return (

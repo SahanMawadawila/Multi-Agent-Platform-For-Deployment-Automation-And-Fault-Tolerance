@@ -95,7 +95,7 @@ export default function ProjectDetailPage() {
 
 
   return (
-    <TerminalSocketProvider projectId={projectData.project_id} accessToken={token||""}>
+    <TerminalSocketProvider projectId={projectId || ""} accessToken={token||""}>
       <div className="space-y-8">
         
         {/* Page Header */}
