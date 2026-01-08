@@ -51,12 +51,14 @@ const Navbar = () => {
       <nav className="fixed top-0 w-full z-50 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 bg-violet-600 rounded-lg flex items-center justify-center">
-                <Terminal className="text-white" size={20} />
+            <Link href={'/'} >
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 bg-violet-600 rounded-lg flex items-center justify-center">
+                  <Terminal className="text-white" size={20} />
+                </div>
+                <span className="font-bold text-xl tracking-tight text-white">Tool X</span>
               </div>
-              <span className="font-bold text-xl tracking-tight text-white">Tool X</span>
-            </div>
+            </Link>
             
             <div className="hidden md:flex items-center space-x-8 text-sm font-medium text-slate-300">
               <a href="#" className="hover:text-white transition-colors">Platform</a>

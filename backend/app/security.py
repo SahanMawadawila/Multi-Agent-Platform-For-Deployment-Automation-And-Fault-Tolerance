@@ -17,5 +17,6 @@ def verify_access_token(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
-    except Exception:
+    except Exception as e:
+        print("Token verification failed:", str(e))
         return None

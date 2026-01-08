@@ -3,8 +3,8 @@ from kafka import KafkaConsumer
 from dotenv import load_dotenv
 import os
 
-KAFKA_TOPIC = 'agent-jobs'
-KAFKA_SERVER = 'localhost:9092'
+KAFKA_TOPIC = os.getenv('KAFKA_TOPIC_AGENT_JOBS', 'agent-jobs')
+KAFKA_SERVER = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
 
 def start_consumer():
     load_dotenv()

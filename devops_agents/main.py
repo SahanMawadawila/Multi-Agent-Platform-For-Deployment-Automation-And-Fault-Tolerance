@@ -1,4 +1,8 @@
 # main.py
+from app.kafka_consumer import start_consumer
+import dotenv
+dotenv.load_dotenv()
+
 import asyncio  # Async IO
 import json  # JSON parsing
 from aiokafka import AIOKafkaConsumer  # ASYNC Kafka client (Critical change)

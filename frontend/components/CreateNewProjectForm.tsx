@@ -35,13 +35,24 @@ export default function CreateNewProjectForm() {
     setRepoStatus("loading");
     setError("");
     try {
-      // TODO: Replace with actual API call
-      await new Promise((res) => setTimeout(res, 1200));
-      // Simulate: if url contains 'private', ask to connect
-      if (url.includes("private")) {
-        setRepoStatus("connect");
-      } else {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/github/check-repo-accessible/?repo_url=${encodeURIComponent(url)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session?.backendToken}`,
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error("Failed to check repository access");
+      }
+
+      const data = await response.json();
+      if (data.is_accessible === true) {
         setRepoStatus("success");
+      } else {
+        setRepoStatus("connect");
+        setError("Could not access repository.");
       }
     } catch {
       setRepoStatus("error");
@@ -49,8 +60,32 @@ export default function CreateNewProjectForm() {
     }
   };
 
+  const RequestRepoAccess = async () => {
+    console.log("Requesting repo access...");
+    try {
+      // Step 1: Get repo access URL from backend
+      const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/github/get-access-request-url/`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${session?.backendToken}`,
+        },
+      });
+      if (!resp.ok) {
+        throw new Error("Failed to get repo access URL");
+      }
+      const data = await resp.json();
+      const { access_request_url } = data;
+
+      // Step 2: Redirect user to GitHub access request URL in new tab
+      // window.open(access_request_url, "_blank");
+      setName(access_request_url); // Test
+    } catch (err) {
+      console.error("Error requesting repo access:", err);
+    }
+  };
+
   const handleRepoBlur = () => {
-    if (repoUrl && repoUrl.startsWith("http")) {
+    if (repoUrl && repoUrl.startsWith("https://github.com")) {
       checkRepoAccess(repoUrl);
     }
   };
@@ -145,9 +180,14 @@ export default function CreateNewProjectForm() {
             </span>
           )}
           {repoStatus === "connect" && (
-            <span className="absolute right-3 top-2">
-              <GitBranch className="text-yellow-400" size={20} />
-            </span>
+            <Button
+              type="button"
+              size="sm"
+              className="absolute right-1 top-1 h-8 bg-yellow-500 hover:bg-yellow-600 text-black"
+              onClick={RequestRepoAccess}
+            >
+              Connect
+            </Button>
           )}
         </div>
         {repoStatus === "connect" && (
