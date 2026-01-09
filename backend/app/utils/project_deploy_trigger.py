@@ -183,8 +183,6 @@ async def trigger_deployment_process(project_id: str):
 
             await db.commit()
 
-            send_terminal_message(project_id, f"Deployment process initiated successfully.\n\r")
-
         except Exception as e:
             send_terminal_message(project_id, f"Error during code sync: {e}")
             return

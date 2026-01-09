@@ -3,6 +3,7 @@ from jinja2 import Environment, FileSystemLoader
 from state import AgentState
 from tools.git_tools import AsyncGitTools
 import json
+from app.kafka_terminal_producer import send_terminal_message
 
 class DockerAgent:
     def __init__(self):
@@ -31,6 +32,7 @@ class DockerAgent:
 
         # Write and Push
         print("🐳 Generated Dockerfile. Pushing...")
+        send_terminal_message(state["project_id"], "🐳 Generated Dockerfile. Pushing...\n\r")
         await AsyncGitTools.write_and_push(
             local_path, 
             "Dockerfile", 

@@ -138,7 +138,7 @@ async def project_terminal_websocket(
 
         # Send initial message to client
         current_time = t.strftime("%Y-%m-%d %H:%M:%S", t.gmtime())
-        await websocket.send_text(f"{current_time} - Terminal connected to project \033[33m{project.project_name}\033[0m.\n")
+        await websocket.send_text(f"{current_time} - Terminal connected to project \033[33m{project.project_name}\033[0m.\n\r")
         
         try:
             while True:

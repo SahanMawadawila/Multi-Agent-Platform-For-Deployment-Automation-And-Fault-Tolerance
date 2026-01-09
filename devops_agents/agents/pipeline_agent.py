@@ -10,6 +10,7 @@ from jinja2 import Environment, FileSystemLoader
 from state import AgentState
 from tools.git_tools import AsyncGitTools
 from config.settings import settings
+from app.kafka_terminal_producer import send_terminal_message
 
 class PipelineAgent:
     def __init__(self):
@@ -22,15 +23,18 @@ class PipelineAgent:
         )
 
     # --- AWS ECR LOGIC ---
-    def ensure_ecr_repo(self, repo_name: str):
+    def ensure_ecr_repo(self, repo_name: str, project_id: str = ""):
+        
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 self.ecr_client.describe_repositories(repositoryNames=[repo_name])
                 print(f"✅ ECR Repository '{repo_name}' already exists.")
+                send_terminal_message(project_id, f"✅ ECR Repository '{repo_name}' already exists.\n\r")
                 return 
             except self.ecr_client.exceptions.RepositoryNotFoundException:
                 print(f"⚠️ ECR Repository '{repo_name}' not found. Creating...")
+                send_terminal_message(project_id, f"⚠️ ECR Repository '{repo_name}' not found. Creating...\n\r")
                 try:
                     self.ecr_client.create_repository(
                         repositoryName=repo_name,
@@ -38,16 +42,20 @@ class PipelineAgent:
                         encryptionConfiguration={'encryptionType': 'AES256'}
                     )
                     print(f"🚀 Created ECR Repository: {repo_name}")
+                    send_terminal_message(project_id, f"🚀 Created ECR Repository: {repo_name}\n\r")
                     return
                 except Exception as e:
                     print(f"❌ Failed to create repo: {e}")
+                    send_terminal_message(project_id, f"❌ Failed to create repo: {e}\n\r")
                     raise e
             except (EndpointConnectionError, ConnectionClosedError) as e:
                 print(f"📡 AWS Connection failed. Retrying in 5s...")
+                send_terminal_message(project_id, f"📡 AWS Connection failed. Retrying in 5s...\n\r")
                 time.sleep(5)
                 if attempt == max_retries - 1: raise e
             except ClientError as e:
                 print(f"❌ AWS Error: {e}")
+                send_terminal_message(project_id, "❌ Build agent error occurred\n\r")
                 raise e
 
     # --- GITHUB SECRETS AUTOMATION ---
@@ -98,6 +106,7 @@ class PipelineAgent:
         repo_name = state["repo_name"]
 
         print(f"🔍 Checking AWS ECR for Project ID: {ecr_repo_name}...")
+        send_terminal_message(state["project_id"], f"🔍 Checking AWS ECR for Project ID: {ecr_repo_name}...\n\r")
         self.ensure_ecr_repo(ecr_repo_name)
 
         print(f"🔑 Injecting AWS Secrets into GitHub Repo {repo_owner}/{repo_name}...")
