@@ -64,7 +64,7 @@ function ProjectPageSkeleton() {
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
-  const projectId = Array.isArray(id) ? id[0] : id;
+  const projectId: string | undefined = Array.isArray(id) ? id[0] : id;
   const [projectData, setProjectData] = useState<DetailedProject | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>("overview");
@@ -116,7 +116,7 @@ export default function ProjectDetailPage() {
                   <ProjectOverview />
                 </TabsContent>
                 <TabsContent value="deployments" >
-                  <DeploymentsTable />
+                  <DeploymentsTable projectId={projectId || ""} />
                 </TabsContent>
                 <TabsContent value="environment">
                   <EnvironmentVariableTab />

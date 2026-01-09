@@ -5,6 +5,7 @@ import time
 import gc
 from github import Github, GithubException # PyGithub
 from git import Repo # GitPython
+from urllib.parse import quote
 
 class GitMirrorSync:
     """
@@ -26,9 +27,38 @@ class GitMirrorSync:
         os.makedirs(self.workspace_dir, exist_ok=True)
 
     def _get_auth_url(self, url):
-        """Injects token into the URL so we can write to the private repo."""
-        clean_url = url.replace("https://", "").replace("http://", "")
-        return f"https://{self.token}@{clean_url}"
+        """Injects token into the URL so we can write to the private repo.
+
+        URL-encode the token to avoid breaking the URL when token contains
+        special characters.
+        """
+        if not self.token:
+            return url
+
+        # Only inject for HTTP/HTTPS URLs
+        if url.startswith("https://") or url.startswith("http://"):
+            clean_url = url.replace("https://", "").replace("http://", "")
+            token_enc = quote(self.token, safe='')
+            return f"https://{token_enc}@{clean_url}"
+
+        return url
+
+    def _inject_token_into_url(self, url, token):
+        """Return a clone URL that includes the provided access token for HTTPS URLs.
+
+        If the provided URL is not HTTP(S) (e.g. an SSH URL), return the original URL.
+        """
+        if not token:
+            return url
+
+        # Only inject for HTTP/HTTPS URLs; URL-encode token to avoid breaking
+        if url.startswith("https://") or url.startswith("http://"):
+            clean = url.replace("https://", "").replace("http://", "")
+            token_enc = quote(token, safe='')
+            return f"https://{token_enc}@{clean}"
+
+        # Can't inject token into SSH or other URL schemes; return original
+        return url
 
     def _force_remove_readonly(self, func, path, excinfo):
         """
@@ -83,7 +113,7 @@ class GitMirrorSync:
                 return entity.get_repo(mirror_name).clone_url
             raise e
 
-    def sync_code(self, user_source_url, mirror_repo_name, env_variables: dict = None):
+    def sync_code(self, user_source_url, mirror_repo_name, env_variables: dict = None, source_access_token: str = None):
         """
         Clone User's code -> Add .env if provided -> Push to Your Mirror.
         Works for BOTH initial setup AND updates.
@@ -110,10 +140,47 @@ class GitMirrorSync:
 
         print(f"🔄 Mirroring {user_source_url} -> {mirror_repo_name}...")
 
+        # If a source access token is provided, inject it into the clone URL for HTTPS repos.
+        clone_url = user_source_url
+        if source_access_token:
+            injected = self._inject_token_into_url(user_source_url, source_access_token)
+            if injected != user_source_url:
+                clone_url = injected
+                print("Using provided access token for cloning (token not shown).")
+            else:
+                print("Provided access token could not be injected (non-HTTPS URL); proceeding without injecting token.")
+
         repo = None
         try:
             # Clone normally (not bare) so we can add files
-            repo = Repo.clone_from(user_source_url, local_path)
+            print("Cloning source repository...")
+            repo = Repo.clone_from(clone_url, local_path)
+            print("✅ Clone Success!", local_path)
+
+            # Try to determine the latest commit on origin/main (or fallbacks)
+            commit_id = None
+            try:
+                # Ensure we have fetched remote refs
+                try:
+                    repo.remotes.origin.fetch()
+                except Exception:
+                    pass
+
+                for remote_ref in ("origin/main", "origin/master"):
+                    try:
+                        commit_id = repo.commit(remote_ref).hexsha
+                        break
+                    except Exception:
+                        continue
+
+                # Fallback to local HEAD if remote refs not present
+                if not commit_id:
+                    try:
+                        commit_id = repo.head.commit.hexsha
+                    except Exception:
+                        commit_id = None
+            except Exception:
+                commit_id = None
 
             # Add .env file if env_variables provided
             if env_variables:
@@ -131,7 +198,7 @@ class GitMirrorSync:
             # Push all tags
             new_remote.push(tags=True, force=True)
             
-            print("✅ Sync Success!")
+            print("✅ Sync Success!", f"commit={commit_id}")
             
         finally:
             # Close the repo to release file handles
@@ -142,7 +209,8 @@ class GitMirrorSync:
             # Cleanup (Optional: save disk space)
             self._safe_rmtree(local_path)
         
-        return mirror_repo_url
+        # Return mirror URL and the commit id we synced (may be None if unknown)
+        return mirror_repo_url, commit_id
 
     def _create_env_file(self, repo_path: str, env_variables: dict):
         """

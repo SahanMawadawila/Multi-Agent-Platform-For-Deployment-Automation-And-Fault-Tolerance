@@ -1,5 +1,6 @@
 # main.py
 from app.kafka_consumer import start_consumer
+from app.kafka_terminal_producer import send_terminal_message  # Producer to terminal topic
 import dotenv
 dotenv.load_dotenv()
 
@@ -14,7 +15,9 @@ async def process_job(job):
     Runs the graph for a single job.
     """
     repo_url = job.get("repo_url")
+    project_id = job.get("project_id")
     print(f"🚀 Processing Repo: {repo_url}")
+    send_terminal_message(project_id, f"🚀 Processing Repo: {repo_url}\n\r")
     
     # Initialize state
     initial_state = {
@@ -30,7 +33,10 @@ async def process_job(job):
     
     # Print the result
     print(f"✅ Analysis Complete for {repo_url}")
+    send_terminal_message(project_id, f"✅ Analysis Complete for {repo_url}\n\r")
+
     print(f"📄 Result: {result['final_analysis']}")
+    send_terminal_message(project_id, f"📄 Result: {result['final_analysis']}\n\r")
     # Here you would typically send the result back to another Kafka topic
 
 async def consume():
@@ -54,6 +60,12 @@ async def consume():
         async for message in consumer:
             job = message.value
             print(f"📥 Received Job: {job}")
+            project_id = job.get("project_id")
+            if not project_id:
+                print("⚠️ Job missing project_id, skipping terminal message.")
+            
+            send_terminal_message(project_id, f"📥 Received Job\n\r")
+
             
             # Run processing in background (or await if you want sequential processing)
             # Awaiting ensures we don't crash the consumer with too many concurrent graphs
