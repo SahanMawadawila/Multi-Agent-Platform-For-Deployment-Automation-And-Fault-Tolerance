@@ -112,7 +112,7 @@ export default function CreateNewProjectForm() {
       });
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/deploy/`,
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/`,
         {
           method: "POST",
           headers: {
@@ -121,8 +121,9 @@ export default function CreateNewProjectForm() {
           },
           body: JSON.stringify({
             project_name: name,
-            github_url: repoUrl,
-            env_variables: envVariables,
+            repository_url: repoUrl,
+            env_vars: envVariables,
+            trigger_deployment: true,
           }),
         }
       );

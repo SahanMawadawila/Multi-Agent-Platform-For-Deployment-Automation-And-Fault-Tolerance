@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, DateTime, Boolean, ForeignKey, Enum
+from sqlalchemy import Column, Integer, DateTime, Boolean, ForeignKey, Enum, String
 from sqlalchemy.dialects.postgresql import UUID # Using UUID from the postgresql dialect
 import enum
 from datetime import datetime
@@ -59,6 +59,13 @@ class ProjectBuild(Base):
         Enum(BuildStatus, name='build_statuses', create_type=True),
         nullable=False
     )
+
+    # Commit ID associated with this build
+    commit_id = Column(
+        String,
+        nullable=True
+    )
+    
     
     # is_current bool
     is_current = Column(
