@@ -1,15 +1,11 @@
 # agents/repo_analyst.py
-from langchain_openai import ChatOpenAI  # Import OpenAI LLM wrapper
-from langchain_core.tools import tool, InjectedToolArg  # Decorator to create tools
-from langchain_core.messages import SystemMessage  # To set agent behavior
-from langchain_core.runnables import RunnableConfig
-from state import RepoAnalysisOutput  # Import the target output model
-from tools.git_tools import AsyncGitTools  # Import our async git tools
-from config.settings import settings  # Import settings
-from typing import Annotated
-
-# Initialize the LLM with the API key
-llm = ChatOpenAI(model="gpt-4o-mini", api_key=settings.openai_key, temperature=0)
+from langchain_core.tools import tool
+from langchain_core.messages import SystemMessage, AIMessage # <--- Changed import
+from state import RepoAnalysisOutput
+from tools.git_tools import AsyncGitTools
+from typing import Annotated, Optional
+import json
+import uuid # <--- Import UUID for unique tool call IDs
 
 # Store local_path globally for the tool to access
 _current_local_path: str = ""
@@ -19,72 +15,143 @@ def set_local_path(path: str):
     global _current_local_path
     _current_local_path = path
 
-# --- Define the Tool ---
 @tool
 async def read_repo_file(file_path: str) -> str:
-    """
-    Reads a specific file from the repository.
-    Useful for checking package.json, requirements.txt, .env.example, etc.
-    
-    Args:
-        file_path: The relative path to the file within the repository
-    """
+    """Reads a file from the checked-out repository."""
     global _current_local_path
     if not _current_local_path:
         return "Error: Internal path configuration missing."
-    
-    # Call the async read function
-    content = await AsyncGitTools.read_file(_current_local_path, file_path)
-    return content
+    return await AsyncGitTools.read_file(_current_local_path, file_path)
 
-# --- Setup the Agent ---
-# The agent needs access to:
-# 1. read_repo_file (to gather info)
-# 2. RepoAnalysisOutput (to submit the final answer)
 tools = [read_repo_file, RepoAnalysisOutput]
 
-# Bind these tools to the LLM so it knows they exist
-llm_with_tools = llm.bind_tools(tools)
+# --- REMOVED THE CUSTOM _ToolCallMessage CLASS ---
 
 async def repo_analysis_agent(state):
-    """
-    The Brain. Decides whether to read a file or submit final analysis.
-    """
-    # 1. Create the System Prompt (Identity & Instructions)
-    system_prompt = SystemMessage(content="""
-    You are a Senior DevOps Engineer. 
-    Your goal is to analyze a codebase and extract deployment details.
-    
-    You have the list of files. 
-    1. Look for config files (package.json, pom.xml, requirements.txt, .env).
-    2. Use the 'read_repo_file' tool to read them.
-    3. EXTRACT the following: Language, Framework, Port, Build Command, Run Command, Env Vars.
-    
-    Keep looping and reading files until you are 100% sure. 
-    Once sure, call the 'RepoAnalysisOutput' tool to finish.
-    """)
-
+    """Programmatic repo analyzer that reads common files and returns structured output."""
     current_count = state.get("loop_count", 0)
-
     if current_count > 5:
-        return {
-            "messages": [SystemMessage(content="ERROR: Loop limit reached.")],
-            "loop_count": current_count # Don't increment further
-        }
+        # Use SystemMessage for errors
+        return {"messages": [SystemMessage(content="ERROR: Loop limit reached.")], "loop_count": current_count}
+
+    local_path = state.get("local_path")
+    if not local_path:
+        return {"messages": [SystemMessage(content="ERROR: local_path not set")], "loop_count": current_count}
+
+    # Helper to attempt to read a file and return None if not found
+    async def _maybe_read(relpath: str) -> Optional[str]:
+        res = await AsyncGitTools.read_file(local_path, relpath)
+        if res.startswith("File not found") or res.startswith("Error reading file"):
+            return None
+        return res
+
+    # 1. Gather Context (Same as before)
+    package_json_raw = await _maybe_read("package.json")
+    tsconfig_raw = await _maybe_read("tsconfig.json")
+    env_example_raw = await _maybe_read(".env.example")
+    package_lock_raw = await _maybe_read("package-lock.json")
+    yarn_lock_raw = await _maybe_read("yarn.lock")
+    pnpm_lock_raw = await _maybe_read("pnpm-lock.yaml")
+
+    # Defaults
+    language = "node"
+    version = "18"
+    package_manager = "npm"
+    port = 8080
+    build_command = ""
+    run_command = ""
+    env_vars = []
+    env_defaults = {}
+    uses_typescript = False
+    lockfile = None
+    build_output = "dist"
+    start_script = None
+    detected_ports = []
+    has_native = False
+    build_tools = []
+    repo_name = "app"
+    framework = "express" # Default fallback
+
+    # 2. Logic (Same as before)
+    if package_json_raw:
+        try:
+            pj = json.loads(package_json_raw)
+            scripts = pj.get("scripts", {})
+            build_command = scripts.get("build", "")
+            run_command = scripts.get("start", "") or run_command
+            deps = {**pj.get("dependencies", {}), **pj.get("devDependencies", {})}
+            
+            if "typescript" in deps or tsconfig_raw:
+                uses_typescript = True
+            
+            # Framework detection
+            if "next" in deps:
+                detected_ports.append(3000)
+                framework = "next"
+            elif "nest" in deps:
+                framework = "nest"
+            else:
+                detected_ports.append(3000) # Default express/node often 3000 or 8080
+
+            repo_name = pj.get("name", repo_name)
+            main_entry = pj.get("main")
+            if main_entry and not start_script:
+                start_script = main_entry
+        except Exception:
+            pass
+
+    if pnpm_lock_raw:
+        lockfile = "pnpm-lock.yaml"
+        package_manager = "pnpm"
+    elif yarn_lock_raw:
+        lockfile = "yarn.lock"
+        package_manager = "yarn"
+    elif package_lock_raw:
+        lockfile = "package-lock.json"
+        package_manager = "npm"
+
+    if tsconfig_raw:
+        try:
+            ts = json.loads(tsconfig_raw)
+            compiler = ts.get("compilerOptions", {})
+            outdir = compiler.get("outDir")
+            if outdir:
+                build_output = outdir
+        except Exception:
+            pass
+
+    if env_example_raw:
+        for line in env_example_raw.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            env_vars.append(k.strip())
+
+    # 3. Construct Output Args
+    output_args = {
+        "language": language,
+        "version": version,
+        "package_manager": package_manager,
+        "port": detected_ports[0] if detected_ports else port,
+        "build_command": build_command,
+        "run_command": run_command or start_script or "npm start",
+        "env_variables": env_vars,
+        "has_lockfile": bool(lockfile),
+        "framework": framework
+    }
+
+    # --- FIX: Return a standard AIMessage with tool_calls ---
+    # LangGraph expects standard message objects. We create an AIMessage
+    # that "pretends" the AI decided to call the RepoAnalysisOutput tool.
     
-    # 2. Create the User Context (Current Situation)
-    user_message = f"Here is the file list: {state['file_list']}"
+    msg = AIMessage(
+        content="",
+        tool_calls=[{
+            "name": "RepoAnalysisOutput",
+            "args": output_args,
+            "id": str(uuid.uuid4()) # Unique ID required for tool calls
+        }]
+    )
     
-    # 3. manage History: System Prompt + Previous Conversation (State) + New Context
-    # We construct the message history for the LLM
-    messages = [system_prompt] + state["messages"]
-    
-    # If this is the very first turn, append the file list context
-    if len(state["messages"]) == 0:
-        messages.append(SystemMessage(content=user_message))
-        
-    # 4. Invoke LLM
-    response = await llm_with_tools.ainvoke(messages)
-    
-    # 5. Return the response (updates 'messages' in state automatically)
-    return {"messages": [response], "loop_count": current_count + 1}
+    return {"messages": [msg], "loop_count": current_count + 1}

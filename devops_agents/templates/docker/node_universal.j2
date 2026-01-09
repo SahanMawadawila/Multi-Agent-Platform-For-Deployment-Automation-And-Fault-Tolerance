@@ -1,0 +1,67 @@
+# syntax=docker/dockerfile:1
+FROM node:{{ version }}-alpine AS base
+
+# 1. Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Install dependencies based on the preferred package manager
+COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* ./
+
+{% if package_manager == 'yarn' %}
+  RUN yarn --frozen-lockfile
+{% elif package_manager == 'pnpm' %}
+  RUN npm install -g pnpm && pnpm i --frozen-lockfile
+{% else %}
+  # --- FIX STARTS HERE ---
+  # If we have a lockfile, use 'npm ci' for speed/reliability.
+  # If NOT, use 'npm install' to generate one.
+  {% if has_lockfile %}
+    RUN npm ci
+  {% else %}
+    RUN npm install
+  {% endif %}
+  # --- FIX ENDS HERE ---
+{% endif %}
+
+# 2. Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Environment variables
+{% for env in env_variables %}
+ARG {{ env }}
+ENV {{ env }}=${{ env }}
+{% endfor %}
+
+{% if build_command %}
+RUN {{ build_command }}
+{% endif %}
+
+# 3. Production image
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+# Fix legacy key value format warning
+ENV PORT={{ port }}
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nodejs
+
+{% if framework == 'next' %}
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nodejs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nodejs:nodejs /app/.next/static ./.next/static
+{% else %}
+COPY --from=builder --chown=nodejs:nodejs /app ./
+{% endif %}
+
+USER nodejs
+EXPOSE {{ port }}
+
+# Fix JSONArgsRecommended warning
+CMD {{ run_command }}

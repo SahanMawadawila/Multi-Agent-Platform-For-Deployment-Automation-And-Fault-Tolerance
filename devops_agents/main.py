@@ -19,11 +19,14 @@ async def process_job(job):
     # Initialize state
     initial_state = {
         "repo_url": repo_url,
+        "project_id": job.get("project_id"),
         "messages": [] # Empty history
     }
+
+    config = { "recursion_limit": 15 }
     
     # Run the graph (ainvoke is the async method)
-    result = await app.ainvoke(initial_state)
+    result = await app.ainvoke(initial_state, config=config)
     
     # Print the result
     print(f"✅ Analysis Complete for {repo_url}")
