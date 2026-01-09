@@ -56,6 +56,18 @@ class UserProject(Base):
         nullable=True
     )
 
+    # env_vars jsonb
+    env_vars = Column(
+        JSONB,
+        nullable=True
+    )
+
+    # Github mirror name
+    mirror_name = Column(
+        String,
+        nullable=True
+    )
+
     def __repr__(self):
         return (
             f"<UserProject("

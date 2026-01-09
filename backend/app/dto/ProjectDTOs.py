@@ -1,6 +1,7 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict
 from uuid import UUID
+from datetime import datetime
 
 class UserProjectSimpleOutDTO(BaseModel):
     project_id: UUID
@@ -17,12 +18,33 @@ class UserProjectSimpleOutDTO(BaseModel):
 class UserProjectDetailOutDTO(BaseModel):
     project_id: UUID
     project_name: str
-    github_url: Optional[str]
+    github_url: Optional[str] = None
     is_auto_deploy_enabled: bool
-    domain_name: Optional[str]
-    status: Optional[str]
-    topology_info: Optional[dict]
-    env_variables: Optional[list]
+    domain_name: Optional[str] = None
+    status: Optional[str] = None
+    topology_info: Optional[dict] = None
+    env_vars: Optional[Dict[str, str]] = None
+
+    class Config:
+        orm_mode = True
+        from_attributes = True
+
+
+class ProjectCreateInDTO(BaseModel):
+    project_name: str
+    repository_url: str
+    env_vars: Optional[Dict[str, str]] = None
+    trigger_deployment: Optional[bool] = False
+
+
+
+class ProjectDeploymentOutDTO(BaseModel):
+    build_id: int
+    project_id: UUID
+    build_date: datetime
+    build_status: str
+    commit_id: Optional[str] = None
+    build_version: Optional[int] = None
 
     class Config:
         orm_mode = True

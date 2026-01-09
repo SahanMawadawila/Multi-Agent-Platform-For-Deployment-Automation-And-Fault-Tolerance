@@ -1,38 +1,38 @@
-'use client';
+ 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, XCircle, Clock, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useSession } from 'next-auth/react';
 
 interface Deployment {
     id: number;
-    version: string;
+    version: number | string;
     date: string;
     status: 'Success' | 'Failed' | 'Building';
     duration: string;
     type: 'Current' | 'Previous';
-    commit?: string;
+    commit_id?: string;
     branch?: string;
 }
 
-const deployments: Deployment[] = [
-    { id: 5, version: 'v1.5.0', date: '2025-11-25 10:30', status: 'Success', duration: '2 min', type: 'Current', commit: 'a3f2c1d', branch: 'main' },
-    { id: 4, version: 'v1.4.1', date: '2025-11-20 18:45', status: 'Success', duration: '2 min', type: 'Previous', commit: 'b7e9f2a', branch: 'main' },
-    { id: 3, version: 'v1.4.0', date: '2025-11-18 11:15', status: 'Failed', duration: '3 min', type: 'Previous', commit: 'c1d4e5f', branch: 'main' },
-    { id: 2, version: 'v1.3.0', date: '2025-11-10 09:00', status: 'Success', duration: '1 min', type: 'Previous', commit: 'd8a2b3c', branch: 'main' },
-    { id: 1, version: 'v1.2.5', date: '2025-11-05 14:22', status: 'Success', duration: '2 min', type: 'Previous', commit: 'e9f1a4d', branch: 'main' },
-];
 
 const ITEMS_PER_PAGE = 10;
 
-export default function DeploymentsTable() {
+export default function DeploymentsTable({ projectId }: { projectId: string }) {
     const [currentPage, setCurrentPage] = useState(1);
-    
-    const totalPages = Math.ceil(deployments.length / ITEMS_PER_PAGE);
+    const [deployments, setDeployments] = useState<Deployment[]>([]);
+    const [totalPages, setTotalPages] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [loading, setLoading] = useState(false);
+    const [creating, setCreating] = useState(false);
+
+    const { data: session } = useSession();
+
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     const endIndex = startIndex + ITEMS_PER_PAGE;
-    const currentDeployments = deployments.slice(startIndex, endIndex);
+    const currentDeployments = deployments;
 
     const getStatusIcon = (status: Deployment['status']) => {
         switch (status) {
@@ -60,6 +60,79 @@ export default function DeploymentsTable() {
         );
     };
 
+    const mapStatus = (s: string) => {
+        if (!s) return 'Building';
+        const norm = s.toLowerCase();
+        if (norm.includes('success') || norm.includes('succeeded')) return 'Success';
+        if (norm.includes('fail') || norm.includes('failed') || norm.includes('error')) return 'Failed';
+        return 'Building';
+    };
+
+    const fetchDeployments = useCallback(async (page = 1) => {
+        if (!projectId) return;
+        if (!session?.backendToken) return;
+    
+        setLoading(true);
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/deployments?page=${page}&per_page=${ITEMS_PER_PAGE}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.backendToken}`,
+                },
+            });
+            if (!res.ok) throw new Error('Failed to fetch deployments');
+            const data = await res.json();
+
+            const dtoList = data.deployments || [];
+            const mapped: Deployment[] = dtoList.map((d: any, idx: number) => ({
+                id: d.build_id ?? idx,
+                version: d.build_version ?? d.build_id ?? idx,
+                date: d.build_date,
+                status: mapStatus(d.build_status) as Deployment['status'],
+                duration: d.duration ?? '—',
+                type: d.build_version === data.current_version ? 'Current' : 'Previous',
+                commit_id: d.commit_id,
+                branch: d.branch,
+            }));
+
+            setDeployments(mapped);
+            setTotal(data.pagination?.total ?? mapped.length);
+            setTotalPages(data.pagination?.total_pages ?? Math.ceil((data.pagination?.total ?? mapped.length) / ITEMS_PER_PAGE));
+            setCurrentPage(data.pagination?.page ?? page);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    }, [projectId, session?.backendToken]);
+
+    useEffect(() => {
+        fetchDeployments(currentPage);
+    }, [currentPage, fetchDeployments]);
+
+    const createDeployment = async () => {
+        if (!projectId) return;
+        if (!session?.backendToken) return;
+
+        setCreating(true);
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/deploy`, { 
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.backendToken}`,
+                },
+            });
+            if (!res.ok) throw new Error('Failed to create deployment');
+            if (currentPage === 1) await fetchDeployments(1);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setCreating(false);
+        }
+    };
+
     const formatDate = (dateString: string) => {
         const date = new Date(dateString);
         const now = new Date();
@@ -77,6 +150,15 @@ export default function DeploymentsTable() {
 
     return (
         <div className="space-y-4">
+            <div className="flex items-center justify-end">
+                <Button
+                    onClick={createDeployment}
+                    disabled={creating}
+                    className="bg-violet-600 text-white hover:bg-violet-700"
+                >
+                    {creating ? 'Creating...' : 'Create deployment'}
+                </Button>
+            </div>
             {/* Table Container */}
             <div className="bg-slate-900/30 border border-slate-800 rounded-lg overflow-hidden">
                 {/* Table Header */}
@@ -138,7 +220,7 @@ export default function DeploymentsTable() {
                             <div className="col-span-2 flex items-center">
                                 <div className="flex items-center gap-2">
                                     <code className="text-slate-400 bg-slate-800/50 px-2 py-1 rounded text-xs font-mono">
-                                        {deployment.commit}
+                                        {deployment.commit_id || ""}
                                     </code>
                                     <span className="text-slate-500 text-xs">
                                         {deployment.branch}
@@ -172,9 +254,9 @@ export default function DeploymentsTable() {
             {totalPages > 1 && (
                 <div className="flex items-center justify-between px-2">
                     <div className="text-sm text-slate-400">
-                        Showing <span className="text-slate-200 font-medium">{startIndex + 1}</span> to{' '}
-                        <span className="text-slate-200 font-medium">{Math.min(endIndex, deployments.length)}</span> of{' '}
-                        <span className="text-slate-200 font-medium">{deployments.length}</span> deployments
+                        Showing <span className="text-slate-200 font-medium">{total === 0 ? 0 : startIndex + 1}</span> to{' '}
+                        <span className="text-slate-200 font-medium">{Math.min(endIndex, total)}</span> of{' '}
+                        <span className="text-slate-200 font-medium">{total}</span> deployments
                     </div>
 
                     <div className="flex items-center gap-2">
