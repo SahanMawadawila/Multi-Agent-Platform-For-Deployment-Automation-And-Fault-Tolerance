@@ -17,7 +17,7 @@
         {
             "label": "2. Start DevOps Agents",
             "type": "shell",
-            "command": "uv sync && uv run python main.py",
+            "command": "uv sync; uv run python main.py",
             "options": {
                 "cwd": "${workspaceFolder}/devops_agents"
             },
@@ -30,7 +30,7 @@
         {
             "label": "3. Start Backend",
             "type": "shell",
-            "command": "uv sync && uv run uvicorn main:app --reload",
+            "command": "uv sync; uv run uvicorn main:app --reload",
             "options": {
                 "cwd": "${workspaceFolder}/backend"
             },
@@ -43,7 +43,7 @@
         {
             "label": "4. Start Frontend",
             "type": "shell",
-            "command": "pnpm install && pnpm dev",
+            "command": "pnpm install; pnpm dev",
             "options": {
                 "cwd": "${workspaceFolder}/frontend"
             },
