@@ -1,4 +1,3 @@
-# agents/pipeline_agent.py
 import boto3
 import time
 import base64

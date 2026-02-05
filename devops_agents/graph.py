@@ -6,7 +6,7 @@ from agents.repo_analyst import (
     finalize_analysis, 
     check_analysis_finish
 )
-from agents.docker_agent import docker_node
+from agents.docker_agent import docker_writing_agent
 from agents.pipeline_agent import pipeline_node
 from agents.monitor_agent import monitor_build_node
 
@@ -17,7 +17,7 @@ workflow = StateGraph(AgentState)
 workflow.add_node("repo_analysis_agent", repo_analysis_agent)
 workflow.add_node("repo_analysis_tool", repo_analysis_tool_node)
 workflow.add_node("finalize_analysis", finalize_analysis)
-workflow.add_node("write_docker", docker_node)
+workflow.add_node("docker_writing_agent", docker_writing_agent)
 workflow.add_node("write_pipeline", pipeline_node)
 workflow.add_node("monitor", monitor_build_node)
 workflow.add_node("failed", lambda x: {"build_status": "analysis_failed"})
@@ -37,8 +37,8 @@ workflow.add_conditional_edges(
 )
 
 workflow.add_edge("repo_analysis_tool", "repo_analysis_agent")
-workflow.add_edge("finalize_analysis", "write_docker")
-workflow.add_edge("write_docker", "write_pipeline")
+workflow.add_edge("finalize_analysis", "docker_writing_agent")
+workflow.add_edge("docker_writing_agent", "write_pipeline")
 workflow.add_edge("write_pipeline", "monitor")
 workflow.add_edge("monitor", END)
 workflow.add_edge("failed", END)
