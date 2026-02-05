@@ -1,4 +1,3 @@
-# agents/docker_agent.py
 from jinja2 import Environment, FileSystemLoader
 from state import AgentState
 from tools.git_tools import AsyncGitTools
@@ -10,7 +9,7 @@ class DockerAgent:
         self.env = Environment(loader=FileSystemLoader("templates/docker"))
 
     async def generate_and_push(self, state: AgentState):
-        analysis = state["final_analysis"]
+        analysis = state["analyzed_repository_details"]
         local_path = state["local_path"]
 
         # Parse run command to JSON array for CMD if needed, or keep string

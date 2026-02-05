@@ -1,8 +1,3 @@
-"""
-Docstring for app.kafka_terminal_producer
-
-Wrapper module to produce messages to a Kafka topic for the Frontend Terminal interface.
-"""
 import os
 from kafka import KafkaProducer
 import json

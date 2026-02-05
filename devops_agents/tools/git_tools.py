@@ -1,9 +1,9 @@
-# tools/git_tools.py
 import os
 import git
 import asyncio
 from typing import List
 from config.settings import settings
+import shutil
 
 class AsyncGitTools:
     
@@ -11,14 +11,13 @@ class AsyncGitTools:
     async def clone_repository(repo_url: str, clone_dir: str) -> str:
         def _clone():
             if os.path.exists(clone_dir):
-                # If exists, pull latest to ensure we are up to date
+                # If exists, pull latest 
                 try:
                     repo = git.Repo(clone_dir)
                     repo.remotes.origin.pull()
                     return clone_dir
                 except:
-                    import shutil
-                    shutil.rmtree(clone_dir)
+                    shutil.rmtree(clone_dir) # If pull fails, delete and try again
 
             auth_url = repo_url.replace("https://", f"https://{settings.github_token}@")
             git.Repo.clone_from(auth_url, clone_dir)
@@ -37,7 +36,7 @@ class AsyncGitTools:
         def _walk():
             file_list = []
             for root, dirs, files in os.walk(local_path):
-                if ".git" in root: continue
+                if ".git" in root: continue #no need to go through git folder
                 for file in files:
                     full_path = os.path.join(root, file)
                     rel_path = os.path.relpath(full_path, local_path).replace("\\", "/")
@@ -70,9 +69,9 @@ class AsyncGitTools:
             with open(full_path, 'w', encoding='utf-8') as f:
                 f.write(content)
             
-            # Git operations
+            #stage, commit and push
             repo = git.Repo(local_path)
-            repo.index.add([file_path])
+            repo.index.add([file_path]) 
             repo.index.commit(commit_message)
             origin = repo.remote(name='origin')
             origin.push()
