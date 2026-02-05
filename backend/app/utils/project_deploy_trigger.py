@@ -177,9 +177,11 @@ async def trigger_deployment_process(project_id: str):
             }
 
             # 5. Send message to kafka
+            print(f"Sending to Kafka: {kafka_payload}")
             producer = get_kafka_producer()
             producer.send(settings.KAFKA_TOPIC_AGENT_JOBS, value=kafka_payload)
             producer.flush()
+            print("Message sent to Kafka successfully")
 
             await db.commit()
 

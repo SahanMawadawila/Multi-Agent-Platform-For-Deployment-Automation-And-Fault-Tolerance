@@ -15,12 +15,13 @@ class RepoAnalysisOutput(BaseModel):
     project_type: str = Field(..., description="Project type: 'node' or 'springboot'")
     version: str = Field(..., description="Runtime version (e.g. '18' for Node, '17' for Java)")
     package_manager: str = Field(..., description="Package manager: npm, yarn, pnpm, maven, gradle")
-    build_command: str = Field("", description="Build command (e.g. 'npm run build', 'mvn clean package')")
+    build_command: str = Field("", description="Build command (e.g. 'npm run build', 'mvn clean package'). Empty if no build needed.")
     run_command: str = Field(..., description="Start command (e.g. 'npm start', 'java -jar app.jar')")
     port: int = Field(..., description="Application port (e.g. 3000, 8080)")
     env_variables: List[str] = Field(default_factory=list, description="Required environment variable keys")
     has_lockfile: bool = Field(False, description="Whether a lockfile exists (package-lock.json, yarn.lock, etc.)")
     framework: Optional[str] = Field(None, description="Detected framework: next, nest, express, spring-boot, etc.")
+    needs_build_step: bool = Field(False, description="True if build step creates output (TypeScript, Next.js, NestJS). False for plain JS apps that run directly.")
 
 # ============== TOOL ==============
 @tool
@@ -63,10 +64,30 @@ Your task:
 - Detect framework from dependencies: next, nest, express
 - Extract: version (from engines or default to 18), scripts (build, start), port
 
+### CRITICAL: Determining needs_build_step
+Look at the "build" script in package.json:
+- Set needs_build_step=TRUE if build creates actual output:
+  * TypeScript projects (tsconfig.json exists and build uses tsc/ts-node)
+  * Next.js (next build creates .next folder)
+  * NestJS (nest build creates dist folder)
+  * Build script contains: tsc, webpack, vite build, next build, nest build
+  
+- Set needs_build_step=FALSE if:
+  * No build script exists
+  * Build script just echoes a message or runs tests
+  * Plain JavaScript project with just index.js
+  * Build script is just "echo" or placeholder
+
+### CRITICAL: Run Command
+- Look at "start" and "main" in package.json
+- If main is "index.js", run_command should be "node index.js"
+- If scripts.start exists, use "npm start"
+
 ## For Spring Boot Projects (pom.xml or build.gradle exists):
 - Read: pom.xml or build.gradle
 - Read: src/main/resources/application.properties or application.yml (if exists)
 - Extract: Java version, build command, port (server.port)
+- needs_build_step is always TRUE for Spring Boot
 
 ## Rules:
 - If you cannot find information, use sensible defaults
@@ -87,7 +108,7 @@ async def repo_analysis_agent(state):
     
     # Build the LLM
     llm = ChatOpenAI(
-        model="gpt-5.1-mini",
+        model="gpt-5-mini",
         api_key=settings.openai_key,
         temperature=0
     )
@@ -111,10 +132,10 @@ async def repo_analysis_agent(state):
     return {"messages": [response]}
 
 # ============== GRAPH HELPERS ==============
-def repo_analysis_tool_node(state):
+async def repo_analysis_tool_node(state):
     """Execute tools with state injection."""
     node = ToolNode(tools)
-    return node.invoke(state)
+    return await node.ainvoke(state)
 
 def finalize_analysis(state):
     """Extract RepoAnalysisOutput from the last tool call and send summary to frontend."""

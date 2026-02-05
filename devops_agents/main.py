@@ -32,7 +32,7 @@ async def process_job(job):
     }
 
     #This is just for debug purposes
-    config = { "recursion_limit": 15 }
+    config = { "recursion_limit": 25 }
     
     result = await app.ainvoke(initial_state, config=config)
 

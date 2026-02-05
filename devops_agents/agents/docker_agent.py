@@ -5,17 +5,17 @@ from tools.git_tools import AsyncGitTools
 from app.kafka_terminal_producer import send_terminal_message
 from config.settings import settings
 
-DOCKERFILE_PROMPT = """You are a Docker expert. Generate a production-ready Dockerfile based on the project analysis provided.
+DOCKERFILE_PROMPT = """You are a Docker expert. Generate a production-ready Dockerfile based on the project analysis.
+
+## Build Strategy:
+- If needs_build_step is FALSE: Use a SINGLE-STAGE build. Just install dependencies and copy source files.
+- If needs_build_step is TRUE: Use MULTI-STAGE build (builder + runner stages).
 
 ## Requirements:
-1. Use multi-stage builds to minimize image size
-2. Use Alpine-based images when possible
-3. Run as non-root user for security
-4. Use appropriate base image version (not 'latest')
-5. Copy only necessary files
-6. Set proper working directory
-7. Expose the correct port
-8. Use proper CMD format
+1. Use Alpine-based images when possible
+2. Use specific base image version (not 'latest')
+3. Expose the correct port
+4. Use proper CMD format (JSON array)
 
 ## Project Analysis:
 - Project Type: {project_type}
@@ -26,11 +26,11 @@ DOCKERFILE_PROMPT = """You are a Docker expert. Generate a production-ready Dock
 - Run Command: {run_command}
 - Port: {port}
 - Has Lockfile: {has_lockfile}
+- Needs Build Step: {needs_build_step}
 - Environment Variables: {env_variables}
 
-## Response Format:
-Return ONLY the Dockerfile content, no explanations or markdown code blocks.
-Start directly with # syntax=docker/dockerfile:1 or FROM statement.
+## Response:
+Return ONLY the Dockerfile content. No markdown, no explanations.
 """
 
 async def docker_writing_agent(state: AgentState):
@@ -44,7 +44,7 @@ async def docker_writing_agent(state: AgentState):
     
     # Build LLM
     llm = ChatOpenAI(
-        model="gpt-5.1-mini",
+        model="gpt-5-mini",
         api_key=settings.openai_key,
         temperature=0
     )
@@ -59,6 +59,7 @@ async def docker_writing_agent(state: AgentState):
         run_command=analysis.run_command,
         port=analysis.port,
         has_lockfile=analysis.has_lockfile,
+        needs_build_step=getattr(analysis, 'needs_build_step', False),
         env_variables=", ".join(analysis.env_variables) if analysis.env_variables else "None"
     )
     

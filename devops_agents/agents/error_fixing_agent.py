@@ -132,7 +132,7 @@ async def error_fixing_agent(state):
     
     # Build LLM
     llm = ChatOpenAI(
-        model="gpt-5.1-mini",
+        model="gpt-5-mini",
         api_key=settings.openai_key,
         temperature=0
     )
@@ -159,13 +159,13 @@ Please analyze this error, read the relevant files, fix the issue, and push the 
     return {"error_fixing_messages": [response]}
 
 # ============== GRAPH HELPERS ==============
-def error_fixing_tool_node(state):
+async def error_fixing_tool_node(state):
     """Execute tools with state injection."""
     # We need to temporarily put error_fixing_messages into messages for ToolNode
     state_copy = dict(state)
     state_copy["messages"] = state.get("error_fixing_messages", [])
     node = ToolNode(tools)
-    result = node.invoke(state_copy)
+    result = await node.ainvoke(state_copy)
     # Map back to error_fixing_messages
     return {"error_fixing_messages": result.get("messages", [])}
 
