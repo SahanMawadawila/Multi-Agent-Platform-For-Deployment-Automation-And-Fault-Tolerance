@@ -12,3 +12,6 @@ class AgentState(TypedDict):
     messages: Annotated[List, add_messages] 
     analyzed_repository_details: Optional[RepoAnalysisOutput] 
     build_status: Optional[str]
+    build_error_logs: Optional[str]
+    retry_count: int
+    error_fixing_messages: Annotated[List, add_messages]

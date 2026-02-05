@@ -27,7 +27,8 @@ async def process_job(job):
         "file_list": files,
         "repo_owner": owner,
         "repo_name": name,
-        "messages": [] # Empty history
+        "messages": [],
+        "retry_count": 0
     }
 
     #This is just for debug purposes
