@@ -1,0 +1,68 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "1. Start Kafka (Docker Compose)",
+            "type": "shell",
+            "command": "docker compose up",
+            "options": {
+                "cwd": "${workspaceFolder}/devops_agents"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "2. Start DevOps Agents",
+            "type": "shell",
+            "command": "uv sync; uv run python main.py",
+            "options": {
+                "cwd": "${workspaceFolder}/devops_agents"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "3. Start Backend",
+            "type": "shell",
+            "command": "uv sync; uv run uvicorn main:app --reload",
+            "options": {
+                "cwd": "${workspaceFolder}/backend"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "4. Start Frontend",
+            "type": "shell",
+            "command": "pnpm install; pnpm dev",
+            "options": {
+                "cwd": "${workspaceFolder}/frontend"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Start All Services",
+            "dependsOn": [
+                "1. Start Kafka (Docker Compose)",
+                "2. Start DevOps Agents",
+                "3. Start Backend",
+                "4. Start Frontend"
+            ],
+            "dependsOrder": "parallel",
+            "problemMatcher": []
+        }
+    ]
+}

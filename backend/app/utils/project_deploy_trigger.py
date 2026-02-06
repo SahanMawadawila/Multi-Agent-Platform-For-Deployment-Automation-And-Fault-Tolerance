@@ -119,9 +119,9 @@ async def trigger_deployment_process(project_id: str):
         # Step 1: Check github mirror already exists
         mirror_name = project.mirror_name
         access_token = await get_github_token(project.owner_id, db)
-        if access_token is None:
-            send_terminal_message(str(project_id), "Error: No valid GitHub OAuth token found for user.\n\r")
-            return
+        # if access_token is None:
+        #     send_terminal_message(str(project_id), "Error: No valid GitHub OAuth token found for user.\n\r")
+        #     return
 
         try:
             send_terminal_message(str(project_id), "Cloning and syncing code from GitHub...\n\r")
@@ -177,9 +177,11 @@ async def trigger_deployment_process(project_id: str):
             }
 
             # 5. Send message to kafka
+            print(f"Sending to Kafka: {kafka_payload}")
             producer = get_kafka_producer()
             producer.send(settings.KAFKA_TOPIC_AGENT_JOBS, value=kafka_payload)
             producer.flush()
+            print("Message sent to Kafka successfully")
 
             await db.commit()
 

@@ -8,5 +8,6 @@ from .user import User
 from .user_project import UserProject
 from .project_builds import ProjectBuild, BuildStatus
 from .oauth_tokens import OauthToken
+from .refresh_token import RefreshToken
 
-__all__ = ["Base", "User", "UserProject", "ProjectBuild", "BuildStatus"]
+__all__ = ["Base", "User", "UserProject", "ProjectBuild", "BuildStatus", "RefreshToken"]

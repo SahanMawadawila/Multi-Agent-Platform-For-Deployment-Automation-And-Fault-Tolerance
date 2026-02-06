@@ -1,157 +1,172 @@
-# agents/repo_analyst.py
 from langchain_core.tools import tool
-from langchain_core.messages import SystemMessage, AIMessage # <--- Changed import
-from state import RepoAnalysisOutput
+from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import InjectedState
+from pydantic import BaseModel, Field
 from tools.git_tools import AsyncGitTools
-from typing import Annotated, Optional
-import json
-import uuid # <--- Import UUID for unique tool call IDs
+from app.kafka_terminal_producer import send_terminal_message
+from config.settings import settings
+from typing import Annotated, Optional, List
+from langgraph.prebuilt import ToolNode
 
-# Store local_path globally for the tool to access
-_current_local_path: str = ""
+# ============== SCHEMA ==============
+class RepoAnalysisOutput(BaseModel):
+    """Structured output from repository analysis for Dockerfile generation."""
+    project_type: str = Field(..., description="Project type: 'node' or 'springboot'")
+    version: str = Field(..., description="Runtime version (e.g. '18' for Node, '17' for Java)")
+    package_manager: str = Field(..., description="Package manager: npm, yarn, pnpm, maven, gradle")
+    build_command: str = Field("", description="Build command (e.g. 'npm run build', 'mvn clean package'). Empty if no build needed.")
+    run_command: str = Field(..., description="Start command (e.g. 'npm start', 'java -jar app.jar')")
+    port: int = Field(..., description="Application port (e.g. 3000, 8080)")
+    env_variables: List[str] = Field(default_factory=list, description="Required environment variable keys")
+    has_lockfile: bool = Field(False, description="Whether a lockfile exists (package-lock.json, yarn.lock, etc.)")
+    framework: Optional[str] = Field(None, description="Detected framework: next, nest, express, spring-boot, etc.")
+    needs_build_step: bool = Field(False, description="True if build step creates output (TypeScript, Next.js, NestJS). False for plain JS apps that run directly.")
 
-def set_local_path(path: str):
-    """Set the local path for tools to use."""
-    global _current_local_path
-    _current_local_path = path
-
+# ============== TOOL ==============
 @tool
-async def read_repo_file(file_path: str) -> str:
-    """Reads a file from the checked-out repository."""
-    global _current_local_path
-    if not _current_local_path:
-        return "Error: Internal path configuration missing."
-    return await AsyncGitTools.read_file(_current_local_path, file_path)
+async def read_file(
+    file_path: str, 
+    state: Annotated[dict, InjectedState]
+) -> str:
+    """Reads a file from the repository.
+    
+    Args:
+        file_path: Relative path to the file (e.g., 'package.json', 'pom.xml', 'src/main/resources/application.properties')
+    
+    Returns:
+        The file content as a string, or an error message if not found.
+    """
+    local_path = state["local_path"]
+    project_id = state.get("project_id", "")
+    
+    # Send terminal message for each file read
+    send_terminal_message(project_id, f"📖 Reading {file_path}\n\r")
+    
+    result = await AsyncGitTools.read_file(local_path, file_path)
+    return result
 
-tools = [read_repo_file, RepoAnalysisOutput]
+# Tools list for the graph
+tools = [read_file, RepoAnalysisOutput]
 
-# --- REMOVED THE CUSTOM _ToolCallMessage CLASS ---
+# ============== AGENT ==============
+SYSTEM_PROMPT = """You are a DevOps expert analyzing a repository to generate a Dockerfile.
+
+Your task:
+1. Look at the file_list provided to understand what files exist in the repository.
+2. Use the read_file tool to read relevant configuration files.
+3. Extract the information needed for Dockerfile generation.
+4. Call the RepoAnalysisOutput tool with your findings.
+
+## For Node.js Projects (package.json exists):
+- Read: package.json, tsconfig.json (if exists), .env.example (if exists)
+- Check for lockfiles: package-lock.json, yarn.lock, pnpm-lock.yaml
+- Detect framework from dependencies: next, nest, express
+- Extract: version (from engines or default to 18), scripts (build, start), port
+
+### CRITICAL: Determining needs_build_step
+Look at the "build" script in package.json:
+- Set needs_build_step=TRUE if build creates actual output:
+  * TypeScript projects (tsconfig.json exists and build uses tsc/ts-node)
+  * Next.js (next build creates .next folder)
+  * NestJS (nest build creates dist folder)
+  * Build script contains: tsc, webpack, vite build, next build, nest build
+  
+- Set needs_build_step=FALSE if:
+  * No build script exists
+  * Build script just echoes a message or runs tests
+  * Plain JavaScript project with just index.js
+  * Build script is just "echo" or placeholder
+
+### CRITICAL: Run Command
+- Look at "start" and "main" in package.json
+- If main is "index.js", run_command should be "node index.js"
+- If scripts.start exists, use "npm start"
+
+## For Spring Boot Projects (pom.xml or build.gradle exists):
+- Read: pom.xml or build.gradle
+- Read: src/main/resources/application.properties or application.yml (if exists)
+- Extract: Java version, build command, port (server.port)
+- needs_build_step is always TRUE for Spring Boot
+
+## Rules:
+- If you cannot find information, use sensible defaults
+- Always call RepoAnalysisOutput at the end with your analysis
+- Be concise in tool usage - only read files that are necessary
+"""
 
 async def repo_analysis_agent(state):
-    """Programmatic repo analyzer that reads common files and returns structured output."""
-    current_count = state.get("loop_count", 0)
-    if current_count > 5:
-        # Use SystemMessage for errors
-        return {"messages": [SystemMessage(content="ERROR: Loop limit reached.")], "loop_count": current_count}
-
-    local_path = state.get("local_path")
-    if not local_path:
-        return {"messages": [SystemMessage(content="ERROR: local_path not set")], "loop_count": current_count}
-
-    # Helper to attempt to read a file and return None if not found
-    async def _maybe_read(relpath: str) -> Optional[str]:
-        res = await AsyncGitTools.read_file(local_path, relpath)
-        if res.startswith("File not found") or res.startswith("Error reading file"):
-            return None
-        return res
-
-    # 1. Gather Context (Same as before)
-    package_json_raw = await _maybe_read("package.json")
-    tsconfig_raw = await _maybe_read("tsconfig.json")
-    env_example_raw = await _maybe_read(".env.example")
-    package_lock_raw = await _maybe_read("package-lock.json")
-    yarn_lock_raw = await _maybe_read("yarn.lock")
-    pnpm_lock_raw = await _maybe_read("pnpm-lock.yaml")
-
-    # Defaults
-    language = "node"
-    version = "18"
-    package_manager = "npm"
-    port = 8080
-    build_command = ""
-    run_command = ""
-    env_vars = []
-    env_defaults = {}
-    uses_typescript = False
-    lockfile = None
-    build_output = "dist"
-    start_script = None
-    detected_ports = []
-    has_native = False
-    build_tools = []
-    repo_name = "app"
-    framework = "express" # Default fallback
-
-    # 2. Logic (Same as before)
-    if package_json_raw:
-        try:
-            pj = json.loads(package_json_raw)
-            scripts = pj.get("scripts", {})
-            build_command = scripts.get("build", "")
-            run_command = scripts.get("start", "") or run_command
-            deps = {**pj.get("dependencies", {}), **pj.get("devDependencies", {})}
-            
-            if "typescript" in deps or tsconfig_raw:
-                uses_typescript = True
-            
-            # Framework detection
-            if "next" in deps:
-                detected_ports.append(3000)
-                framework = "next"
-            elif "nest" in deps:
-                framework = "nest"
-            else:
-                detected_ports.append(3000) # Default express/node often 3000 or 8080
-
-            repo_name = pj.get("name", repo_name)
-            main_entry = pj.get("main")
-            if main_entry and not start_script:
-                start_script = main_entry
-        except Exception:
-            pass
-
-    if pnpm_lock_raw:
-        lockfile = "pnpm-lock.yaml"
-        package_manager = "pnpm"
-    elif yarn_lock_raw:
-        lockfile = "yarn.lock"
-        package_manager = "yarn"
-    elif package_lock_raw:
-        lockfile = "package-lock.json"
-        package_manager = "npm"
-
-    if tsconfig_raw:
-        try:
-            ts = json.loads(tsconfig_raw)
-            compiler = ts.get("compilerOptions", {})
-            outdir = compiler.get("outDir")
-            if outdir:
-                build_output = outdir
-        except Exception:
-            pass
-
-    if env_example_raw:
-        for line in env_example_raw.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            env_vars.append(k.strip())
-
-    # 3. Construct Output Args
-    output_args = {
-        "language": language,
-        "version": version,
-        "package_manager": package_manager,
-        "port": detected_ports[0] if detected_ports else port,
-        "build_command": build_command,
-        "run_command": run_command or start_script or "npm start",
-        "env_variables": env_vars,
-        "has_lockfile": bool(lockfile),
-        "framework": framework
-    }
-
-    # --- FIX: Return a standard AIMessage with tool_calls ---
-    # LangGraph expects standard message objects. We create an AIMessage
-    # that "pretends" the AI decided to call the RepoAnalysisOutput tool.
+    """LLM-powered repo analyzer that reads files and returns structured output."""
     
-    msg = AIMessage(
-        content="",
-        tool_calls=[{
-            "name": "RepoAnalysisOutput",
-            "args": output_args,
-            "id": str(uuid.uuid4()) # Unique ID required for tool calls
-        }]
+    project_id = state.get("project_id", "")
+    file_list = state.get("file_list", [])
+    messages = state.get("messages", [])
+    
+    # Send terminal message on first run
+    if not messages:
+        send_terminal_message(project_id, "🔍 Started analyzing project...\n\r")
+    
+    # Build the LLM
+    llm = ChatOpenAI(
+        model="gpt-5-mini",
+        api_key=settings.openai_key,
+        temperature=0
     )
+    llm_with_tools = llm.bind_tools(tools)
     
-    return {"messages": [msg], "loop_count": current_count + 1}
+    # Build messages for LLM
+    if not messages:
+        # First call - include system prompt and file list
+        file_list_str = "\n".join(f"- {f}" for f in file_list)
+        llm_messages = [
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=f"Analyze this repository. Here are the files:\n\n{file_list_str}")
+        ]
+    else:
+        # Subsequent calls - continue conversation
+        llm_messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
+    
+    # Get LLM response
+    response = await llm_with_tools.ainvoke(llm_messages)
+    
+    return {"messages": [response]}
+
+# ============== GRAPH HELPERS ==============
+async def repo_analysis_tool_node(state):
+    """Execute tools with state injection."""
+    node = ToolNode(tools)
+    return await node.ainvoke(state)
+
+def finalize_analysis(state):
+    """Extract RepoAnalysisOutput from the last tool call and send summary to frontend."""
+    project_id = state.get("project_id", "")
+    
+    try:
+        last_message = state["messages"][-1]
+        output_args = last_message.tool_calls[0]["args"]
+        analysis = RepoAnalysisOutput(**output_args)
+        
+        # Send summary to frontend
+        summary = f"""✅ Repository Analysis Complete
+                    📦 Project Type: {analysis.project_type}
+                    🔧 Framework: {analysis.framework or 'N/A'}
+                    📌 Version: {analysis.version}
+                    🚀 Port: {analysis.port}
+                    📝 Package Manager: {analysis.package_manager}
+                    """
+        send_terminal_message(project_id, summary)
+        
+        return {"analyzed_repository_details": analysis}
+        
+    except Exception as e:
+        send_terminal_message(project_id, f"❌ Analysis validation failed: {str(e)}\n\r")
+        return {"build_status": "analysis_validation_failed"}
+
+def check_analysis_finish(state):
+    """Route based on agent output."""
+    last_message = state["messages"][-1]
+    if hasattr(last_message, "tool_calls") and len(last_message.tool_calls) > 0:
+        if last_message.tool_calls[0]["name"] == "RepoAnalysisOutput":
+            return "finalize_analysis"
+        return "repo_analysis_tool"
+    return "repo_analysis_agent"
