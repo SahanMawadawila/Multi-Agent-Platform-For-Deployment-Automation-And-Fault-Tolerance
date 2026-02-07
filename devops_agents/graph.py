@@ -29,7 +29,6 @@ def check_build_status(state):
     elif build_status == "failed" and retry_count < 3:
         return "needs_fix"
     else:
-    else:
         return "give_up"
 
 def check_deployment_status(state):
@@ -57,7 +56,6 @@ workflow.add_node("build_monitor_agent", build_monitor_agent)
 
 # Nodes - Error Fixing
 workflow.add_node("error_fixing_agent", error_fixing_agent)
-workflow.add_node("error_fixing_tool", error_fixing_tool_node)
 workflow.add_node("error_fixing_tool", error_fixing_tool_node)
 workflow.add_node("finalize_fix", finalize_fix)
 
@@ -115,8 +113,6 @@ workflow.add_conditional_edges(
 workflow.add_edge("error_fixing_tool", "error_fixing_agent")
 workflow.add_edge("finalize_fix", "build_monitor_agent")
 
-# K8s Flow
-# K8s Flow
 workflow.add_edge("k8s_architect_agent", "deployment_monitor_agent")
 
 workflow.add_conditional_edges(
