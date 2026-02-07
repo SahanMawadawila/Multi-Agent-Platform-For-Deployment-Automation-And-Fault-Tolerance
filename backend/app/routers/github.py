@@ -1,16 +1,20 @@
 """
 UI routes for GitHub-related operations.
 """
-from fastapi import APIRouter, Depends, Response, Request
+from fastapi import APIRouter, Depends, Response, Request, BackgroundTasks, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from .deps import get_db
 from ..models import User
-from app.models import OauthToken
+from app.models import OauthToken, UserProject
 from sqlalchemy.future import select
 from app.deps import get_current_user
+from app.utils.webhook_utils import verify_webhook_signature, parse_repo_from_url
+from app.utils.git_mirror_sync import GitMirrorSync
+from app.config import settings
 import os
 import requests
 import time
+import asyncio
 from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 from jwt import PyJWT
@@ -283,3 +287,144 @@ async def github_webhook_callback():
     return {
         "message": "Webhook callback received"
     }
+
+
+"""
+POST /api/github/webhook-push/
+Receives push events from GitHub webhooks and syncs code to mirror repository.
+"""
+@router.post("/webhook-push/")
+async def github_webhook_push(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    x_hub_signature_256: str = Header(None, alias="X-Hub-Signature-256"),
+    x_github_event: str = Header(None, alias="X-GitHub-Event")
+):
+    """
+    Handle GitHub webhook push events.
+    When a push is made to the original repo, sync changes to the mirror.
+    """
+    # Get raw body for signature verification
+    body = await request.body()
+    
+    # Parse JSON payload
+    try:
+        payload = await request.json()
+    except Exception:
+        return {"error": "Invalid JSON payload"}, 400
+    
+    # Extract repository info from payload
+    repo_data = payload.get("repository", {})
+    repo_full_name = repo_data.get("full_name", "")  # e.g., "owner/repo"
+    repo_clone_url = repo_data.get("clone_url", "")  # e.g., "https://github.com/owner/repo.git"
+    
+    if not repo_full_name:
+        print("⚠️ Webhook received but no repository info found")
+        return {"error": "No repository info in payload"}
+    
+    print(f"📥 Webhook received for: {repo_full_name} (event: {x_github_event})")
+    
+    # Only process push events
+    if x_github_event != "push":
+        print(f"ℹ️ Ignoring non-push event: {x_github_event}")
+        return {"message": f"Ignoring event type: {x_github_event}"}
+    
+    # Find project(s) that use this repository
+    # Match by github_url (could be with or without .git suffix)
+    result = await db.execute(
+        select(UserProject).where(
+            UserProject.github_url.ilike(f"%{repo_full_name}%")
+        )
+    )
+    projects = result.scalars().all()
+    
+    if not projects:
+        print(f"⚠️ No projects found for repo: {repo_full_name}")
+        return {"message": "No matching projects found"}
+    
+    # Verify signature for each matching project
+    verified_projects = []
+    for project in projects:
+        if project.webhook_secret:
+            if verify_webhook_signature(body, x_hub_signature_256 or "", project.webhook_secret):
+                verified_projects.append(project)
+                print(f"✅ Signature verified for project: {project.project_id}")
+            else:
+                print(f"❌ Signature verification failed for project: {project.project_id}")
+        else:
+            # No secret configured, skip verification (not recommended for production)
+            verified_projects.append(project)
+            print(f"⚠️ No webhook secret for project: {project.project_id}, skipping verification")
+    
+    if not verified_projects:
+        return {"error": "Signature verification failed for all matching projects"}, 401
+    
+    # Get commit info from payload
+    head_commit = payload.get("head_commit", {})
+    commit_id = head_commit.get("id", "unknown")
+    commit_message = head_commit.get("message", "")
+    pusher = payload.get("pusher", {}).get("name", "unknown")
+    
+    print(f"📦 Push by {pusher}: {commit_message[:50]}... (commit: {commit_id[:8]})")
+    
+    # Trigger sync for each verified project
+    for project in verified_projects:
+        background_tasks.add_task(
+            sync_mirror_from_webhook,
+            str(project.project_id),
+            project.github_url,
+            project.mirror_name,
+            project.env_vars or {},
+            commit_id
+        )
+    
+    return {
+        "message": f"Sync triggered for {len(verified_projects)} project(s)",
+        "commit": commit_id[:8],
+        "projects": [str(p.project_id) for p in verified_projects]
+    }
+
+
+async def sync_mirror_from_webhook(
+    project_id: str,
+    github_url: str,
+    mirror_name: str,
+    env_vars: dict,
+    commit_id: str
+):
+    """
+    Background task to sync code from original repo to mirror.
+    Called when a webhook push event is received.
+    """
+    from app.utils.terminal.terminal_send_message import send_terminal_message
+    from app.utils.project_deploy_trigger import trigger_deployment_process
+    
+    print(f"🔄 Starting webhook sync for project {project_id}")
+    send_terminal_message(project_id, f"📥 Received push webhook (commit: {commit_id[:8]})\n\r")
+    
+    try:
+        # Initialize mirror sync manager
+        manager = GitMirrorSync(settings.GITHUB_TOKEN, settings.GITHUB_ORG)
+        
+        send_terminal_message(project_id, "🔄 Syncing changes to mirror repository...\n\r")
+        
+        # Sync the code (this pulls from original and pushes to mirror)
+        sync_result = await asyncio.to_thread(
+            manager.sync_code,
+            github_url,
+            mirror_name,
+            env_vars
+        )
+        
+        mirror_url, synced_commit = (sync_result if isinstance(sync_result, tuple) else (sync_result, None))
+        
+        send_terminal_message(project_id, f"✅ Mirror updated successfully!\n\r")
+        send_terminal_message(project_id, f"🚀 Triggering new deployment...\n\r")
+        
+        # Trigger full deployment (Kafka job)
+        await trigger_deployment_process(project_id)
+        
+    except Exception as e:
+        print(f"❌ Webhook sync failed for {project_id}: {e}")
+        send_terminal_message(project_id, f"❌ Sync failed: {str(e)}\n\r")

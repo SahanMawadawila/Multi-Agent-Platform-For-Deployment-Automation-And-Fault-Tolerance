@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, UUID, JSON
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, UUID, JSON, BigInteger
 from sqlalchemy.dialects.postgresql import JSONB
 import uuid
 from . import Base
@@ -64,6 +64,18 @@ class UserProject(Base):
 
     # Github mirror name
     mirror_name = Column(
+        String,
+        nullable=True
+    )
+
+    # GitHub webhook ID for auto-sync (stored as BigInteger since GitHub IDs can be large)
+    webhook_id = Column(
+        BigInteger,
+        nullable=True
+    )
+
+    # Webhook secret for verifying payloads
+    webhook_secret = Column(
         String,
         nullable=True
     )
