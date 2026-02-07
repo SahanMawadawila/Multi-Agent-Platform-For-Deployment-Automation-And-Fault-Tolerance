@@ -17,6 +17,7 @@ from agents.error_fixing_agent import (
     check_fix_complete,
     finalize_fix
 )
+from app.kafka_build_producer import send_build_event
 
 # ============== ROUTING FUNCTIONS ==============
 def check_build_status(state):
@@ -74,8 +75,20 @@ workflow.add_node("error_fixing_tool", error_fixing_tool_node)
 workflow.add_node("finalize_fix", finalize_fix)
 
 # Nodes - Terminal States
-workflow.add_node("success", lambda x: {"build_status": "success"})
-workflow.add_node("failed", lambda x: {"build_status": "failed"})
+def mark_build_success(state):
+    send_build_event(state["project_id"], state["build_id"], "success")
+    return {"build_status": "success"}
+
+def mark_build_failed(state):
+    details = state.get("build_error_logs", "Retries exhausted") or "Retries exhausted"
+    # Truncate details if they are too long for Kafka message
+    if len(details) > 1000:
+        details = details[:1000] + "..."
+    send_build_event(state["project_id"], state["build_id"], "failed", details=details)
+    return {"build_status": "failed"}
+
+workflow.add_node("success", mark_build_success)
+workflow.add_node("failed", mark_build_failed)
 
 # ============== EDGES ==============
 workflow.set_entry_point("repo_analysis_agent")

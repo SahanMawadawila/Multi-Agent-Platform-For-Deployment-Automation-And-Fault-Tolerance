@@ -1,4 +1,5 @@
 from app.kafka_terminal_producer import send_terminal_message
+from app.kafka_build_producer import send_build_event
 import dotenv
 import asyncio
 import json 
@@ -11,6 +12,10 @@ dotenv.load_dotenv()
 async def process_job(job):
     repo_url = job.get("repo_url")
     project_id = job.get("project_id")
+    build_id = job.get("build_id")
+    
+    # Notify backend that build is now in progress
+    send_build_event(project_id, build_id, "in_progress")
     
     repo_name_full = repo_url.split("github.com/")[-1].replace(".git", "")
     owner, name = repo_name_full.split("/")
@@ -23,6 +28,7 @@ async def process_job(job):
     
     initial_state = {
         "project_id": job.get("project_id"),
+        "build_id": job.get("build_id"),
         "local_path": local_path,
         "file_list": files,
         "repo_owner": owner,

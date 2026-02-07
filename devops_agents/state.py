@@ -5,6 +5,7 @@ from agents.repo_analyst import RepoAnalysisOutput
 
 class AgentState(TypedDict):
     project_id: str  
+    build_id: str # The unique ID for this specific build/run
     local_path: str
     file_list: List[str]
     repo_owner: str
