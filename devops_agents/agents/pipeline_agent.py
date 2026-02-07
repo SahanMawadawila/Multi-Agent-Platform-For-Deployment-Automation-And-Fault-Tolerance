@@ -159,4 +159,13 @@ async def pipeline_writing_agent(state: AgentState):
     
     send_terminal_message(project_id, "✅ CI/CD pipeline configured successfully!\n\r")
     
-    return {"workflow_content": workflow_content}
+    # Construct image URL (ecr_uri/repo_name:latest)
+    # We need to get the registry URI. Usually: account_id.dkr.ecr.region.amazonaws.com
+    
+    try:
+        registry_uri = f"{settings.aws_account_id}.dkr.ecr.{settings.aws_region}.amazonaws.com"
+        image_url = f"{registry_uri}/{ecr_repo_name}:latest"
+    except Exception:
+        image_url = f"Error-Resolving-Image-URL"
+
+    return {"workflow_content": workflow_content, "image_url": image_url}

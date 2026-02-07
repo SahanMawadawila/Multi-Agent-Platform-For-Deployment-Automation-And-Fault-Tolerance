@@ -22,6 +22,9 @@ class RepoAnalysisOutput(BaseModel):
     has_lockfile: bool = Field(False, description="Whether a lockfile exists (package-lock.json, yarn.lock, etc.)")
     framework: Optional[str] = Field(None, description="Detected framework: next, nest, express, spring-boot, etc.")
     needs_build_step: bool = Field(False, description="True if build step creates output (TypeScript, Next.js, NestJS). False for plain JS apps that run directly.")
+    health_check_path: str = Field("/", description="Path for liveness/readiness probes (e.g. '/', '/health', '/api/status')")
+    cpu_limit: str = Field("200m", description="CPU limit for K8s (e.g. '200m', '500m')")
+    memory_limit: str = Field("256Mi", description="Memory limit for K8s (e.g. '256Mi', '512Mi')")
 
 # ============== TOOL ==============
 @tool
@@ -88,6 +91,16 @@ Look at the "build" script in package.json:
 - Read: src/main/resources/application.properties or application.yml (if exists)
 - Extract: Java version, build command, port (server.port)
 - needs_build_step is always TRUE for Spring Boot
+
+## INTELLIGENCE RULES (Resources & Health):
+1. **Health Check Path**:
+   - Spring Boot: default to `/actuator/health` or `/health`
+   - Node/Express: Look for `app.get('/health')` or use `/`
+   - Next.js: use `/`
+2. **Resources (CPU/Memory)**:
+   - **Java/Spring Boot**: logic heavy. Set memory="512Mi", cpu="500m"
+   - **Node.js**: lightweight. Set memory="256Mi", cpu="200m"
+   - **NestJS**: moderate. Set memory="384Mi", cpu="300m"
 
 ## Rules:
 - If you cannot find information, use sensible defaults

@@ -13,11 +13,25 @@ spec:
       labels:
         app: {{ app_name }}
     spec:
+      imagePullSecrets:
+      - name: {{ image_pull_secret }}
       containers:
       - name: {{ app_name }}
         image: {{ image_url }}
         ports:
         - containerPort: {{ port }}
+        livenessProbe:
+          httpGet:
+            path: {{ health_check_path }}
+            port: {{ port }}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: {{ health_check_path }}
+            port: {{ port }}
+          initialDelaySeconds: 10
+          periodSeconds: 5
         resources:
           limits:
             memory: "{{ memory_limit }}"

@@ -24,8 +24,8 @@ class Settings(BaseModel):
     # AWS Credentials
     aws_access_key: str = Field(default_factory=lambda: os.getenv("AWS_ACCESS_KEY"))
     aws_secret_key: str = Field(default_factory=lambda: os.getenv("AWS_SECRET_KEY"))
-    aws_region: str = Field(default_factory=lambda: os.getenv("AWS_REGION", "eu-north-1"))
-    # aws_region: str = Field(default="ap-south-1", description="Default bucket region")
+    aws_region: str = Field(default="ap-south-1", description="Default bucket region")
+    aws_account_id: str = Field(default_factory=lambda: os.getenv("AWS_ACCOUNT_ID"), description="AWS Account ID")
 
     def validate_keys(self):
         """Checks if critical keys are missing."""
@@ -35,6 +35,8 @@ class Settings(BaseModel):
             raise ValueError("Missing GITHUB_TOKEN in .env")
         if not self.aws_access_key or not self.aws_secret_key:
             raise ValueError("Missing AWS Credentials (AWS_ACCESS_KEY or AWS_SECRET_KEY) in .env")
+        if not self.aws_account_id:
+            raise ValueError("Missing AWS_ACCOUNT_ID in .env")
 
 # Instantiate and validate
 settings = Settings()
