@@ -1,5 +1,5 @@
 from langchain_core.tools import tool
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import InjectedState, ToolNode
 from pydantic import BaseModel, Field
@@ -81,81 +81,164 @@ async def commit_and_push(
     except subprocess.CalledProcessError as e:
         return f"Error pushing changes: {e.stderr.decode() if e.stderr else str(e)}"
 
+# Schema for planning
+class FixStep(BaseModel):
+    id: int = Field(..., description="Progressive step number starting from 1")
+    task: str = Field(..., description="Description of the fix task (e.g., 'Update Dockerfile to use node:18')")
+
+class FixPlan(BaseModel):
+    explanation: str = Field(..., description="High-level explanation of why the build failed and how the steps fix it")
+    steps: List[FixStep] = Field(..., description="Ordered list of steps to resolve the issue")
+
 # Schema for completion signal
 class FixComplete(BaseModel):
-    """Signal that the fix has been applied and pushed."""
-    summary: str = Field(..., description="Brief summary of what was fixed")
+    """Signal that the current planned step has been applied and pushed."""
+    summary: str = Field(..., description="Brief summary of what was fixed in this specific step")
 
 tools = [read_file_structure, read_file, write_file, commit_and_push, FixComplete]
 
-# ============== AGENT ==============
-SYSTEM_PROMPT = """You are a DevOps debugging expert. A CI/CD build has failed and you need to fix it.
+# ============== AGENTS ==============
 
-## Your Task:
-1. Analyze the error message provided
-2. Read relevant files to understand the issue
-3. Fix the problematic file(s)
-4. Commit and push the fix
-5. Call FixComplete when done
+ANALYZER_PROMPT = """You are a DevOps analysis expert. Your job is to investigate a CI/CD build failure.
 
-## Common Issues and Fixes:
-- **Dockerfile syntax errors**: Check FROM, RUN, COPY, CMD statements
-- **Missing dependencies**: Check package.json or requirements.txt
-- **Port mismatch**: Ensure EXPOSE matches application port
-- **Build command errors**: Verify build scripts exist
-- **Permission issues**: Check file permissions in Dockerfile
+1. Review the error logs provided.
+2. Use `read_file_structure` and `read_file` to understand the codebase.
+3. Identify exactly why the build failed.
+4. Provide a clear, technical summary of the root cause.
 
-## Available Tools:
-- read_file_structure: See all files in the repo
-- read_file: Read any file content
-- write_file: Write/update a file
-- commit_and_push: Commit and push changes
-- FixComplete: Signal that fix is complete
+You are NOT allowed to do changes to the codebase, unless it is a Dockerfile, config files or build scripts like yml files.
+Do NOT attempt to fix it. Just analyze and report your findings.
+"""
 
-## Rules:
-- Be precise with fixes - only change what's necessary
-- Always commit and push after making changes
-- Call FixComplete with a summary when done
+async def error_analyzer_agent(state):
+    """Analyzes build errors without making changes."""
+    project_id = state.get("project_id", "")
+    error_logs = state.get("build_error_logs", "No logs")
+    
+    send_terminal_message(project_id, "🔍 Analyzing root cause of build failure...\n\r")
+    
+    llm = ChatOpenAI(model="gpt-5.1", api_key=settings.openai_key, temperature=0)
+    llm_with_tools = llm.bind_tools([read_file_structure, read_file])
+    
+    messages = [
+        SystemMessage(content=ANALYZER_PROMPT),
+        HumanMessage(content=f"Build failed with error:\n\n{error_logs}")
+    ]
+    
+    # Simple loop for analysis
+    for i in range(5):
+        response = await llm_with_tools.ainvoke(messages)
+        messages.append(response)
+        
+        # Exit Condition: LLM provides a summary (text content) and no more tools
+        if not response.tool_calls and response.content:
+            return {"analysis_results": response.content}
+        
+        # fallback if it returns nothing
+        if not response.tool_calls and not response.content:
+            print("Analyzer returned empty response, retrying...")
+            continue
+
+        # Execute tools
+        for tool_call in response.tool_calls:
+            tool_name = tool_call["name"]
+            tool_args = tool_call["args"]
+
+            print(f"Tool call: {tool_name} with args {tool_args}")
+            
+            if tool_name == "read_file_structure":
+                result = await read_file_structure.ainvoke({"state": state})
+            elif tool_name == "read_file":
+                result = await read_file.ainvoke({**tool_args, "state": state})
+            else:
+                result = f"Error: Tool {tool_name} not allowed for analyzer."
+            
+            messages.append(ToolMessage(content=str(result), tool_call_id=tool_call["id"]))
+            
+    print("Analysis did not reach conclusion within tool call limit.")
+    return {"analysis_results": "Analysis timed out or failed to reach conclusion."}
+
+PLANNER_PROMPT = """You are a DevOps architect. Based on the analysis of a build failure, create a step-by-step resolution plan.
+
+Each step should be small and verifiable. For example:
+- Step 1: Update Dockerfile to fix syntax error in RUN command.
+- Step 2: Add missing 'express' dependency to package.json.
+
+Do not suggest more than 3 steps. Each step MUST be actionable by a code-writing agent.
+"""
+
+async def error_planner_agent(state):
+    """Creates a structured plan based on analysis."""
+    project_id = state.get("project_id", "")
+    analysis = state.get("analysis_results", "No analysis")
+    
+    send_terminal_message(project_id, "📋 Creating fix plan...\n\r")
+    
+    llm = ChatOpenAI(model="gpt-5.1", api_key=settings.openai_key, temperature=0)
+    structured_llm = llm.with_structured_output(FixPlan)
+    
+    plan = await structured_llm.ainvoke([
+        SystemMessage(content=PLANNER_PROMPT),
+        HumanMessage(content=f"Analysis of failure:\n{analysis}")
+    ])
+    
+    # Store plan as plain dicts for state serialization
+    plan_dicts = [{"id": s.id, "task": s.task, "status": "not-started"} for s in plan.steps]
+    
+    msg = f"Plan created: {plan.explanation}\n\r"
+    for s in plan.steps:
+        msg += f" - Step {s.id}: {s.task}\n\r"
+    send_terminal_message(project_id, msg)
+    
+    return {
+        "error_fixing_plan": plan_dicts,
+        "current_step_index": 0
+    }
+
+EXECUTOR_PROMPT = """You are a DevOps engineer executing a specific fix step.
+
+Current Task: {task}
+Full Plan Context: {plan_explanation}
+
+Rules:
+1. ONLY perform the task described in the 'Current Task'.
+2. Use `write_file` to implement the change.
+3. Use `commit_and_push` to submit the fix.
+4. ALWAYS call `FixComplete` with a summary once you have pushed your change.
 """
 
 async def error_fixing_agent(state):
-    """LLM-powered agent that analyzes build errors and fixes them."""
-    
+    """Executes ONE step of the plan."""
     project_id = state.get("project_id", "")
+    plan = state.get("error_fixing_plan", [])
+    step_idx = state.get("current_step_index", 0)
     error_fixing_messages = state.get("error_fixing_messages", [])
-    error_logs = state.get("build_error_logs", "No error logs available")
-    retry_count = state.get("retry_count", 0)
     
-    # First run for this error fix attempt
+    if step_idx >= len(plan):
+        return {"build_status": "plan_exhausted"}
+    
+    current_step = plan[step_idx]
+    
     if not error_fixing_messages:
-        send_terminal_message(project_id, f"🔧 Analyzing build failure (Attempt {retry_count + 1}/3)...\n\r")
-    
-    # Build LLM
-    llm = ChatOpenAI(
-        model="gpt-5-mini",
-        api_key=settings.openai_key,
-        temperature=0
-    )
+        send_terminal_message(project_id, f"🛠️ Executing Step {current_step['id']}: {current_step['task']}...\n\r")
+
+    llm = ChatOpenAI(model="gpt-5-mini", api_key=settings.openai_key, temperature=0)
     llm_with_tools = llm.bind_tools(tools)
     
-    # Build messages for LLM
+    system_content = EXECUTOR_PROMPT.format(
+        task=current_step['task'],
+        plan_explanation="Multiple steps to resolve build failure."
+    )
+    
     if not error_fixing_messages:
-        # First call - include error context
         llm_messages = [
-            SystemMessage(content=SYSTEM_PROMPT),
-            HumanMessage(content=f"""The build has failed with the following error:
-
-{error_logs}
-
-Please analyze this error, read the relevant files, fix the issue, and push the changes.""")
+            SystemMessage(content=system_content),
+            HumanMessage(content=f"Please carry out this specific task: {current_step['task']}")
         ]
     else:
-        # Subsequent calls - continue conversation
-        llm_messages = [SystemMessage(content=SYSTEM_PROMPT)] + error_fixing_messages
-    
+        llm_messages = [SystemMessage(content=system_content)] + error_fixing_messages
+        
     response = await llm_with_tools.ainvoke(llm_messages)
-    
-    # Return to separate message field for error fixing agent
     return {"error_fixing_messages": [response]}
 
 # ============== GRAPH HELPERS ==============
@@ -186,14 +269,38 @@ def check_fix_complete(state):
     return "error_fixing_agent"
 
 def finalize_fix(state):
-    """Mark fix as complete and increment retry count."""
+    """Mark current step as complete and transition to rebuild."""
     project_id = state.get("project_id", "")
+    step_idx = state.get("current_step_index", 0)
+    plan = state.get("error_fixing_plan", [])
     retry_count = state.get("retry_count", 0)
+    error_fixing_messages = state.get("error_fixing_messages", [])
     
-    send_terminal_message(project_id, "✅ Fix applied. Rebuilding...\n\r")
+    send_terminal_message(project_id, f"✅ Step {step_idx + 1} applied. Verifying with build...\n\r")
     
+    # 1. Provide ToolMessage responses for any pending tool calls (like FixComplete)
+    # to satisfy OpenAI's requirement that all tool calls must have a response.
+    new_messages = []
+    if error_fixing_messages:
+        last_msg = error_fixing_messages[-1]
+        if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+            for tc in last_msg.tool_calls:
+                new_messages.append(ToolMessage(
+                    tool_call_id=tc["id"],
+                    content=f"Task '{tc['name']}' acknowledged and step finalized."
+                ))
+
+    # We update the status in the plan list
+    if plan and step_idx < len(plan):
+        plan_copy = [dict(s) for s in plan]
+        plan_copy[step_idx]["status"] = "completed"
+    else:
+        plan_copy = plan
+
     return {
         "retry_count": retry_count + 1,
+        "current_step_index": step_idx + 1,
+        "error_fixing_plan": plan_copy,
         "build_status": "retrying",
-        "error_fixing_messages": []  # Clear for next attempt if needed
+        "error_fixing_messages": new_messages  # This now appends the required ToolMessages
     }

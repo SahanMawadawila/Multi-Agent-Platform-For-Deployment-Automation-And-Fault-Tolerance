@@ -10,6 +10,8 @@ from agents.docker_agent import docker_writing_agent
 from agents.pipeline_agent import pipeline_writing_agent
 from agents.monitor_agent import build_monitor_agent
 from agents.error_fixing_agent import (
+    error_analyzer_agent,
+    error_planner_agent,
     error_fixing_agent,
     error_fixing_tool_node,
     check_fix_complete,
@@ -21,13 +23,33 @@ def check_build_status(state):
     """Route based on build status after monitoring."""
     build_status = state.get("build_status", "")
     retry_count = state.get("retry_count", 0)
+    plan = state.get("error_fixing_plan", [])
+    step_idx = state.get("current_step_index", 0)
     
     if build_status == "success":
         return "success"
-    elif build_status == "failed" and retry_count < 3:
-        return "needs_fix"
-    else:
-        return "give_up"
+    
+    # If build failed
+    if build_status == "failed":
+        if retry_count >= 3:
+            return "give_up"
+        
+        # If we have a plan in progress, continue to next step
+        if plan and step_idx < len(plan):
+            return "continue_fix"
+        else:
+            # No plan yet or plan finished but still failing -> start fresh analysis
+            return "start_analysis"
+            
+    return "give_up"
+
+def check_plan_exists(state):
+    """Check if we already have a plan to follow."""
+    plan = state.get("error_fixing_plan", [])
+    step_idx = state.get("current_step_index", 0)
+    if plan and step_idx < len(plan):
+        return "error_fixing_agent"
+    return "error_analyzer_agent"
 
 # ============== BUILD GRAPH ==============
 workflow = StateGraph(AgentState)
@@ -44,7 +66,9 @@ workflow.add_node("pipeline_writing_agent", pipeline_writing_agent)
 # Nodes - Build Monitor
 workflow.add_node("build_monitor_agent", build_monitor_agent)
 
-# Nodes - Error Fixing
+# Nodes - Error Planning & Fixing
+workflow.add_node("error_analyzer_agent", error_analyzer_agent)
+workflow.add_node("error_planner_agent", error_planner_agent)
 workflow.add_node("error_fixing_agent", error_fixing_agent)
 workflow.add_node("error_fixing_tool", error_fixing_tool_node)
 workflow.add_node("finalize_fix", finalize_fix)
@@ -80,12 +104,17 @@ workflow.add_conditional_edges(
     check_build_status,
     {
         "success": "success",
-        "needs_fix": "error_fixing_agent",
+        "continue_fix": "error_fixing_agent",
+        "start_analysis": "error_analyzer_agent",
         "give_up": "failed"
     }
 )
 
-# Error Fixing Flow
+# Error Planning Flow
+workflow.add_edge("error_analyzer_agent", "error_planner_agent")
+workflow.add_edge("error_planner_agent", "error_fixing_agent")
+
+# Error Execution Flow
 workflow.add_conditional_edges(
     "error_fixing_agent",
     check_fix_complete,

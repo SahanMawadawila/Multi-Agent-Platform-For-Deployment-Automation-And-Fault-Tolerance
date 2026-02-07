@@ -15,3 +15,6 @@ class AgentState(TypedDict):
     build_error_logs: Optional[str]
     retry_count: int
     error_fixing_messages: Annotated[List, add_messages]
+    error_fixing_plan: Optional[List[dict]] # List of { "id": int, "task": str, "status": str }
+    current_step_index: int
+    analysis_results: Optional[str]

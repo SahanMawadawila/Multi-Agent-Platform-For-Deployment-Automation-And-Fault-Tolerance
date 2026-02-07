@@ -28,11 +28,14 @@ async def process_job(job):
         "repo_owner": owner,
         "repo_name": name,
         "messages": [],
-        "retry_count": 0
+        "retry_count": 0,
+        "error_fixing_plan": None,
+        "current_step_index": 0,
+        "analysis_results": None
     }
 
     #This is just for debug purposes
-    config = { "recursion_limit": 25 }
+    config = { "recursion_limit": 50 }
     
     result = await app.ainvoke(initial_state, config=config)
 
