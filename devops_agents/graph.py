@@ -15,6 +15,8 @@ from agents.error_fixing_agent import (
     check_fix_complete,
     finalize_fix
 )
+from agents.k8s_architect_agent import k8s_architect_agent
+from agents.deployment_monitor_agent import deployment_monitor_agent
 
 # ============== ROUTING FUNCTIONS ==============
 def check_build_status(state):
@@ -27,7 +29,16 @@ def check_build_status(state):
     elif build_status == "failed" and retry_count < 3:
         return "needs_fix"
     else:
+    else:
         return "give_up"
+
+def check_deployment_status(state):
+    """Route based on deployment status."""
+    status = state.get("deployment_status", "")
+    if status == "success":
+        return "success"
+    else:
+        return "failed"
 
 # ============== BUILD GRAPH ==============
 workflow = StateGraph(AgentState)
@@ -47,7 +58,13 @@ workflow.add_node("build_monitor_agent", build_monitor_agent)
 # Nodes - Error Fixing
 workflow.add_node("error_fixing_agent", error_fixing_agent)
 workflow.add_node("error_fixing_tool", error_fixing_tool_node)
+workflow.add_node("error_fixing_tool", error_fixing_tool_node)
 workflow.add_node("finalize_fix", finalize_fix)
+
+# Nodes - K8s Architect
+# Nodes - K8s Architect
+workflow.add_node("k8s_architect_agent", k8s_architect_agent)
+workflow.add_node("deployment_monitor_agent", deployment_monitor_agent)
 
 # Nodes - Terminal States
 workflow.add_node("success", lambda x: {"build_status": "success"})
@@ -79,7 +96,7 @@ workflow.add_conditional_edges(
     "build_monitor_agent",
     check_build_status,
     {
-        "success": "success",
+        "success": "k8s_architect_agent",
         "needs_fix": "error_fixing_agent",
         "give_up": "failed"
     }
@@ -97,6 +114,19 @@ workflow.add_conditional_edges(
 )
 workflow.add_edge("error_fixing_tool", "error_fixing_agent")
 workflow.add_edge("finalize_fix", "build_monitor_agent")
+
+# K8s Flow
+# K8s Flow
+workflow.add_edge("k8s_architect_agent", "deployment_monitor_agent")
+
+workflow.add_conditional_edges(
+    "deployment_monitor_agent",
+    check_deployment_status,
+    {
+        "success": "success",
+        "failed": "failed"
+    }
+)
 
 # Terminal States
 workflow.add_edge("success", END)

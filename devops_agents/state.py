@@ -15,3 +15,8 @@ class AgentState(TypedDict):
     build_error_logs: Optional[str]
     retry_count: int
     error_fixing_messages: Annotated[List, add_messages]
+    k8s_status: Optional[str]
+    image_url: Optional[str]
+    deployment_status: Optional[str]
+    access_url: Optional[str]
+    monitor_logs: Optional[str]
