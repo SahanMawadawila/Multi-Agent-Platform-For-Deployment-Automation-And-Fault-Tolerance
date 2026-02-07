@@ -49,7 +49,6 @@ def set_github_secret(owner: str, repo: str, secret_name: str, secret_value: str
         # Get the repo's public key
         key_resp = requests.get(f"{base_url}/actions/secrets/public-key", headers=headers)
         if key_resp.status_code != 200:
-            print(f"❌ Failed to get public key for {owner}/{repo}: {key_resp.status_code} - {key_resp.text}")
             return False
         
         public_key_data = key_resp.json()
@@ -69,14 +68,8 @@ def set_github_secret(owner: str, repo: str, secret_name: str, secret_value: str
             "key_id": key_id
         })
         
-        if put_resp.status_code in [201, 204]:
-            print(f"✅ Secret {secret_name} set successfully for {owner}/{repo}")
-            return True
-        else:
-            print(f"❌ Failed to set secret {secret_name}: {put_resp.status_code} - {put_resp.text}")
-            return False
-    except Exception as e:
-        print(f"❌ Exception setting secret {secret_name}: {e}")
+        return put_resp.status_code in [201, 204]
+    except Exception:
         return False
 
 # ============== WORKFLOW TEMPLATE ==============
@@ -101,10 +94,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{{{ secrets.AWS_ACCESS_KEY_ID }}}}
           aws-secret-access-key: ${{{{ secrets.AWS_SECRET_ACCESS_KEY }}}}
@@ -112,20 +105,17 @@ jobs:
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@v1
 
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
         env:
           ECR_REGISTRY: ${{{{ steps.login-ecr.outputs.registry }}}}
-          IMAGE_TAG: ${{{{ github.sha }}}}
+          IMAGE_TAG: latest
         run: |
-          echo "Building Docker image..."
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
-          echo "Pushing to ECR..."
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 """
 
 # ============== MAIN AGENT ==============
@@ -140,63 +130,33 @@ async def pipeline_writing_agent(state: AgentState):
     
     send_terminal_message(project_id, "🚀 Starting CI/CD pipeline generation...\n\r")
     
-    # Debug: Print configuration
-    print(f"📋 Pipeline Config:")
-    print(f"   - AWS Region: {settings.aws_region}")
-    print(f"   - ECR Repo: {ecr_repo_name}")
-    print(f"   - GitHub Repo: {repo_owner}/{repo_name}")
-    print(f"   - AWS Key: {settings.aws_access_key[:10]}..." if settings.aws_access_key else "   - AWS Key: NOT SET!")
+    # Setup ECR
+    ecr_client = boto3.client(
+        "ecr",
+        region_name=settings.aws_region,
+        aws_access_key_id=settings.aws_access_key,
+        aws_secret_access_key=settings.aws_secret_key
+    )
     
-    # Validate AWS credentials
-    if not settings.aws_access_key or not settings.aws_secret_key:
-        send_terminal_message(project_id, "❌ AWS credentials not configured!\n\r")
-        print("❌ Missing AWS_ACCESS_KEY or AWS_SECRET_KEY in .env")
-        return {"error": "Missing AWS credentials"}
+    send_terminal_message(project_id, "☁️ Setting up AWS ECR repository...\n\r")
+    ensure_ecr_repo(ecr_client, ecr_repo_name)
     
-    try:
-        # Setup ECR
-        ecr_client = boto3.client(
-            "ecr",
-            region_name=settings.aws_region,
-            aws_access_key_id=settings.aws_access_key,
-            aws_secret_access_key=settings.aws_secret_key
-        )
-        
-        send_terminal_message(project_id, f"☁️ Setting up AWS ECR repository in {settings.aws_region}...\n\r")
-        ecr_success = ensure_ecr_repo(ecr_client, ecr_repo_name)
-        if ecr_success:
-            send_terminal_message(project_id, "✅ ECR repository ready\n\r")
-        else:
-            send_terminal_message(project_id, "⚠️ ECR setup may have issues\n\r")
-        
-        # Set GitHub secrets
-        send_terminal_message(project_id, "🔐 Configuring deployment secrets...\n\r")
-        key_set = set_github_secret(repo_owner, repo_name, "AWS_ACCESS_KEY_ID", settings.aws_access_key)
-        secret_set = set_github_secret(repo_owner, repo_name, "AWS_SECRET_ACCESS_KEY", settings.aws_secret_key)
-        
-        if key_set and secret_set:
-            send_terminal_message(project_id, "✅ GitHub secrets configured\n\r")
-        else:
-            send_terminal_message(project_id, f"⚠️ GitHub secrets setup: KEY={key_set}, SECRET={secret_set}\n\r")
-            print(f"⚠️ Failed to set GitHub secrets - check GITHUB_TOKEN has admin:repo_hook scope")
-        
-        # Generate and push workflow
-        send_terminal_message(project_id, "📝 Generating GitHub Actions workflow...\n\r")
-        workflow_content = generate_workflow_content(settings.aws_region, ecr_repo_name)
-        
-        await AsyncGitTools.write_and_push(
-            local_path, 
-            ".github/workflows/ci.yml", 
-            workflow_content, 
-            "feat: Add automated AWS ECR pipeline"
-        )
-        
-        send_terminal_message(project_id, "✅ CI/CD pipeline configured successfully!\n\r")
-        
-        return {"workflow_content": workflow_content}
-        
-    except Exception as e:
-        error_msg = f"Pipeline generation failed: {str(e)}"
-        print(f"❌ {error_msg}")
-        send_terminal_message(project_id, f"❌ {error_msg}\n\r")
-        return {"error": error_msg}
+    # Set GitHub secrets
+    send_terminal_message(project_id, "🔐 Configuring deployment secrets...\n\r")
+    set_github_secret(repo_owner, repo_name, "AWS_ACCESS_KEY_ID", settings.aws_access_key)
+    set_github_secret(repo_owner, repo_name, "AWS_SECRET_ACCESS_KEY", settings.aws_secret_key)
+    
+    # Generate and push workflow
+    send_terminal_message(project_id, "📝 Generating GitHub Actions workflow...\n\r")
+    workflow_content = generate_workflow_content(settings.aws_region, ecr_repo_name)
+    
+    await AsyncGitTools.write_and_push(
+        local_path, 
+        ".github/workflows/ci.yml", 
+        workflow_content, 
+        "feat: Add automated AWS ECR pipeline"
+    )
+    
+    send_terminal_message(project_id, "✅ CI/CD pipeline configured successfully!\n\r")
+    
+    return {"workflow_content": workflow_content}
