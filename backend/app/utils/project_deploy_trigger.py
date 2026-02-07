@@ -4,6 +4,11 @@ import json
 from app.models import UserProject, ProjectBuild, BuildStatus
 from app.utils.terminal.terminal_send_message import send_terminal_message
 from app.utils.git_mirror_sync import GitMirrorSync
+from app.utils.webhook_utils import (
+    create_webhook, 
+    parse_repo_from_url, 
+    generate_webhook_secret
+)
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
@@ -149,6 +154,56 @@ async def trigger_deployment_process(project_id: str):
             mirror_url, commit_id = (sync_result if isinstance(sync_result, tuple) else (sync_result, None))
             send_terminal_message(project_id, f"Code synchronized from GitHub. commit={commit_id}\n\r")
 
+            # Step 1.5: Setup webhook for auto-sync (only if not already configured)
+            # Use user's OAuth token if available, otherwise fall back to platform token
+            webhook_token = access_token or settings.GITHUB_TOKEN
+            
+            if project.webhook_id is None and settings.WEBHOOK_BASE_URL:
+                if not webhook_token:
+                    print(f"⚠️ No GitHub token available for webhook creation (user OAuth or GITHUB_TOKEN)")
+                    send_terminal_message(project_id, "⚠️ Skipping webhook setup (no GitHub token available)\n\r")
+                else:
+                    send_terminal_message(project_id, "🔗 Setting up auto-sync webhook...\n\r")
+                    
+                    # Parse owner/repo from github_url
+                    owner, repo = parse_repo_from_url(project.github_url)
+                    print(f"📌 Parsed repo: owner={owner}, repo={repo} from {project.github_url}")
+                    
+                    if owner and repo:
+                        # Generate a unique secret for this project
+                        webhook_secret = generate_webhook_secret()
+                        
+                        # Construct webhook URL
+                        webhook_url = f"{settings.WEBHOOK_BASE_URL}/api/github/webhook-push/"
+                        print(f"📌 Creating webhook at: {webhook_url}")
+                        
+                        # Create the webhook
+                        webhook_id = await asyncio.to_thread(
+                            create_webhook,
+                            owner,
+                            repo,
+                            webhook_url,
+                            webhook_secret,
+                            webhook_token
+                        )
+                        
+                        if webhook_id:
+                            project.webhook_id = webhook_id
+                            project.webhook_secret = webhook_secret
+                            db.add(project)
+                            await db.flush()
+                            send_terminal_message(project_id, "✅ Auto-sync webhook configured!\n\r")
+                            print(f"✅ Webhook created for project {project_id}: ID {webhook_id}")
+                        else:
+                            send_terminal_message(project_id, "⚠️ Could not create webhook (may need admin:repo_hook permission)\n\r")
+                    else:
+                        print(f"⚠️ Could not parse repo URL: {project.github_url}")
+                        send_terminal_message(project_id, f"⚠️ Could not parse repo URL for webhook\n\r")
+            elif project.webhook_id:
+                send_terminal_message(project_id, "ℹ️ Auto-sync webhook already configured\n\r")
+            elif not settings.WEBHOOK_BASE_URL:
+                print("ℹ️ WEBHOOK_BASE_URL not configured, skipping webhook setup")
+                send_terminal_message(project_id, "ℹ️ Webhook URL not configured, skipping auto-sync setup\n\r")
 
             # Step 2: Create a build record
             new_build = ProjectBuild(

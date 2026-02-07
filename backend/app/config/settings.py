@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     FRONTEND_URL: str = "http://localhost:3000"
     
+    # Webhook settings
+    WEBHOOK_BASE_URL: Optional[str] = "https://uncoquettishly-menstrual-frankie.ngrok-free.dev"  # e.g., https://abc123.ngrok.io (for local dev)
+    GITHUB_WEBHOOK_SECRET: str = "default-webhook-secret-change-me"
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

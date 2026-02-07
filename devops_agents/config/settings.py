@@ -24,7 +24,7 @@ class Settings(BaseModel):
     # AWS Credentials
     aws_access_key: str = Field(default_factory=lambda: os.getenv("AWS_ACCESS_KEY"))
     aws_secret_key: str = Field(default_factory=lambda: os.getenv("AWS_SECRET_KEY"))
-    aws_region: str = Field(default="ap-south-1", description="Default bucket region")
+    aws_region: str = Field(default_factory=lambda: os.getenv("AWS_REGION", "eu-north-1"))
 
     def validate_keys(self):
         """Checks if critical keys are missing."""
