@@ -7,7 +7,8 @@ resource "aws_route53_zone" "main" {
   name = var.domain_name
 
   lifecycle {
-    prevent_destroy = true  # Won't be destroyed with terraform destroy
+    # prevent_destroy = true  # Won't be destroyed with terraform destroy
+    prevent_destroy = false
   }
 
   tags = {
