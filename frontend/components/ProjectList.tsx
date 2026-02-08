@@ -1,13 +1,9 @@
 "use client";
 
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { 
-  Plus, 
-  CheckCircle, 
-  Clock, 
-  Server,
-  Code
+import {
+  CheckCircle,
+  Server
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
@@ -34,7 +30,7 @@ async function loadProjects(accessToken: string, page: number = 1, limit: number
     projects: ProjectSimple[];
     pagination: PaginationInfo;
   }
-  
+
 }
 
 function getProjectStateColor(status: string) {
@@ -52,27 +48,27 @@ function getProjectStateColor(status: string) {
 
 function ProjectCardSkeleton() {
   return (
-    <Card 
-              className="p-4 rounded-lg border border-slate-800 bg-slate-900/50 hover:border-violet-500/50 transition-colors cursor-pointer flex justify-between items-center w-full"
-            >
+    <Card
+      className="p-4 rounded-lg border border-slate-800 bg-slate-900/50 hover:border-violet-500/50 transition-colors cursor-pointer flex justify-between items-center w-full"
+    >
       <div className="flex items-center gap-4 w-full">
-          {/* Left side: Icon | Name/Type (stacked) */}
-          <div className="flex items-center gap-4">
-              {/* Icon */}
-              <div className="h-8 w-8 rounded-md bg-slate-800 flex items-center justify-center text-violet-400 shrink-0">
-                  <Skeleton className="h-4 w-4 " />
-              </div>
-              {/* Name & Type (stacked) */}
-              <div>
-                  <Skeleton className="h-4 w-32 mb-2" />
-                  <Skeleton className="h-3 w-24" />
-              </div>
+        {/* Left side: Icon | Name/Type (stacked) */}
+        <div className="flex items-center gap-4">
+          {/* Icon */}
+          <div className="h-8 w-8 rounded-md bg-slate-800 flex items-center justify-center text-violet-400 shrink-0">
+            <Skeleton className="h-4 w-4 " />
           </div>
-          
-          {/* Right side: Status/Uptime (stacked) */}
-          <div className="text-right ms-auto">
-              <Skeleton className="h-4 w-full min-w-8 mb-2" />
+          {/* Name & Type (stacked) */}
+          <div>
+            <Skeleton className="h-4 w-32 mb-2" />
+            <Skeleton className="h-3 w-24" />
           </div>
+        </div>
+
+        {/* Right side: Status/Uptime (stacked) */}
+        <div className="text-right ms-auto">
+          <Skeleton className="h-4 w-full min-w-8 mb-2" />
+        </div>
       </div>
     </Card>
   );
@@ -81,7 +77,7 @@ function ProjectCardSkeleton() {
 export default function ProjectList() {
   const [projects, setProjects] = useState<ProjectSimple[]>([]);
   const [projectsLoading, setProjectsLoading] = useState<boolean>(true);
-  const {data} = useSession();
+  const { data } = useSession();
   const token = data?.backendToken;
 
   useEffect(() => {
@@ -103,11 +99,6 @@ export default function ProjectList() {
     <div className="lg:col-span-1 space-y-6">
       <div className="flex justify-between items-center border-b border-slate-800 pb-4">
         <h2 className="text-xl font-bold text-white">Current Deployments</h2>
-        <Button asChild>
-          <Link href="/dashboard/new-project" className="h-9 px-4 text-sm flex items-center gap-2 inline-flex">
-            <Plus size={16} /> Deploy New Project
-          </Link>
-        </Button>
       </div>
 
       <div className="space-y-4">
@@ -121,35 +112,35 @@ export default function ProjectList() {
         }
         {projects.map((project, index) => (
           <Link href={`/dashboard/project/${project.project_id}`} key={index}
-              className="block">
-            <Card 
+            className="block">
+            <Card
               className="p-4 rounded-lg border border-slate-800 bg-slate-900/50 hover:border-violet-500/50 transition-colors cursor-pointer flex justify-between items-center w-full"
             >
               <div className="flex items-center gap-4 w-full">
-                  {/* Left side: Icon | Name/Type (stacked) */}
-                  <div className="flex items-center gap-4">
-                      {/* Icon */}
-                      <div className="h-8 w-8 rounded-md bg-slate-800 flex items-center justify-center text-violet-400 shrink-0">
-                          <Server size={16} />,
-                      </div>
-                      {/* Name & Type (stacked) */}
-                      <div>
-                          <h3 className="text-base font-semibold text-white">{project.project_name}</h3>
-                          <p className="text-xs text-slate-500">{project.domain_name || "No domain"}</p>
-                      </div>
+                {/* Left side: Icon | Name/Type (stacked) */}
+                <div className="flex items-center gap-4">
+                  {/* Icon */}
+                  <div className="h-8 w-8 rounded-md bg-slate-800 flex items-center justify-center text-violet-400 shrink-0">
+                    <Server size={16} />,
                   </div>
-                  
-                  {/* Right side: Status/Uptime (stacked) */}
-                  <div className="text-right ms-auto">
-                      {/* Status */}
-                      <div className={`text-sm font-medium flex items-center gap-1 justify-end ${getProjectStateColor(project.status || "")}`}>
-                          <CheckCircle size={12} /> {project.status}
-                      </div>
-                      {/* Uptime
+                  {/* Name & Type (stacked) */}
+                  <div>
+                    <h3 className="text-base font-semibold text-white">{project.project_name}</h3>
+                    <p className="text-xs text-slate-500">{project.domain_name || "No domain"}</p>
+                  </div>
+                </div>
+
+                {/* Right side: Status/Uptime (stacked) */}
+                <div className="text-right ms-auto">
+                  {/* Status */}
+                  <div className={`text-sm font-medium flex items-center gap-1 justify-end ${getProjectStateColor(project.status || "")}`}>
+                    <CheckCircle size={12} /> {project.status}
+                  </div>
+                  {/* Uptime
                       <div className="text-xs text-slate-500 flex items-center gap-1 mt-1 justify-end">
                           <Clock size={12} /> {project.uptime}
                       </div> */}
-                  </div>
+                </div>
               </div>
             </Card>
           </Link>

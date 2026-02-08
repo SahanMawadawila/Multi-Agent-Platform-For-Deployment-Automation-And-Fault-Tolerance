@@ -6,9 +6,9 @@ import { Chrome, Github, Mail, UserPlus, LogIn, X } from 'lucide-react';
 
 // Simple Input component for the hidden form, styled to match the dark theme
 const Input = ({ ...props }: React.ComponentProps<'input'>) => (
-  <input 
-    className="w-full bg-slate-800 border border-slate-700 rounded-md p-2 text-sm text-white placeholder-slate-500 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors outline-none" 
-    {...props} 
+  <input
+    className="w-full bg-slate-800 border border-slate-700 rounded-md p-2 text-sm text-white placeholder-slate-500 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors outline-none"
+    {...props}
   />
 );
 
@@ -25,10 +25,10 @@ const AuthModals: React.FC<AuthModalProps> = ({ isOpen, onClose, initialView }) 
   if (!isOpen) return null;
 
   const isSignIn = view === 'signin';
-  const title = isSignIn ? 'Sign In to Tool X' : 'Create an Account';
+  const title = isSignIn ? 'Sign In to FlowPilot' : 'Create an Account';
   const socialTitle = isSignIn ? 'Sign in with your favorite provider' : 'Sign up with your favorite provider';
   const icon = isSignIn ? <LogIn size={20} /> : <UserPlus size={20} />;
-  
+
   // Hidden Email/Password Form
   const EmailPasswordForm = ({ submitLabel, hidden }: { submitLabel: string, hidden: boolean }) => (
     <form className={`space-y-4 ${hidden ? 'hidden' : ''}`}>
@@ -43,12 +43,12 @@ const AuthModals: React.FC<AuthModalProps> = ({ isOpen, onClose, initialView }) 
 
   return (
     // Backdrop
-    <div 
+    <div
       className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity"
       onClick={onClose}
     >
       {/* Modal Card */}
-      <div 
+      <div
         className="bg-slate-900 border border-slate-800 rounded-xl p-8 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in-95"
         onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside modal
       >
@@ -63,20 +63,20 @@ const AuthModals: React.FC<AuthModalProps> = ({ isOpen, onClose, initialView }) 
         </div>
 
         <p className="text-slate-400 text-sm mb-6">{socialTitle}</p>
-        
+
         <div className="space-y-3">
           {/* Social Login Buttons */}
-          <Button 
+          <Button
             onClick={() => signIn("google")}
-            variant="outline" 
+            variant="outline"
             className="w-full h-10 text-base bg-slate-800 border-slate-700 hover:bg-slate-700 text-white cursor-pointer"
           >
             <Chrome className="mr-2" size={18} />
             {isSignIn ? 'Sign in with Google' : 'Sign up with Google'}
           </Button>
-          <Button 
+          <Button
             onClick={() => signIn("github")}
-            variant="outline" 
+            variant="outline"
             className="w-full h-10 text-base bg-slate-800 border-slate-700 hover:bg-slate-700 text-white cursor-pointer"
           >
             <Github className="mr-2" size={18} />
@@ -95,7 +95,7 @@ const AuthModals: React.FC<AuthModalProps> = ({ isOpen, onClose, initialView }) 
             <div className="flex-grow border-t border-slate-800" />
           </div>
 
-          <EmailPasswordForm 
+          <EmailPasswordForm
             submitLabel={isSignIn ? 'Sign In (Hidden)' : 'Sign Up (Hidden)'}
             hidden={true} // Keep this form hidden as requested
           />
@@ -104,7 +104,7 @@ const AuthModals: React.FC<AuthModalProps> = ({ isOpen, onClose, initialView }) 
         {/* Switch View Link */}
         <p className="mt-6 text-center text-sm text-slate-400">
           {isSignIn ? "Don't have an account?" : "Already have an account?"}
-          <button 
+          <button
             onClick={() => setView(isSignIn ? 'signup' : 'signin')}
             className="text-violet-400 hover:text-violet-300 ml-1 font-medium transition-colors"
           >

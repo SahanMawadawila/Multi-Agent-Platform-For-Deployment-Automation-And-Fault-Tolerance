@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
-import { 
-  Terminal, 
+import {
+  Terminal,
   Menu,
   X,
 } from 'lucide-react';
@@ -19,8 +19,8 @@ const Navbar = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authView, setAuthView] = useState<'signin' | 'signup'>('signin');
   // login status
-  const {status} = useSession();
-  
+  const { status } = useSession();
+
   const openModal = (view: 'signin' | 'signup') => {
     setAuthView(view);
     setIsAuthModalOpen(true);
@@ -56,10 +56,10 @@ const Navbar = () => {
                 <div className="h-8 w-8 bg-violet-600 rounded-lg flex items-center justify-center">
                   <Terminal className="text-white" size={20} />
                 </div>
-                <span className="font-bold text-xl tracking-tight text-white">Tool X</span>
+                <span className="font-bold text-xl tracking-tight text-white">FlowPilot</span>
               </div>
             </Link>
-            
+
             <div className="hidden md:flex items-center space-x-8 text-sm font-medium text-slate-300">
               <a href="#" className="hover:text-white transition-colors">Platform</a>
               <a href="#" className="hover:text-white transition-colors">Solutions</a>
@@ -69,25 +69,25 @@ const Navbar = () => {
             </div>
 
             {status === "authenticated" && <div className="hidden md:flex items-center space-x-4">
-              
-                <Button 
-                  variant="default" 
-                  className="h-9 px-4 bg-white text-black hover:bg-slate-200 shadow-none"
-                  asChild
-                >
-                  <Link href="/dashboard">Go to Dashboard</Link>
-                </Button>
+
+              <Button
+                variant="default"
+                className="h-9 px-4 bg-white text-black hover:bg-slate-200 shadow-none"
+                asChild
+              >
+                <Link href="/dashboard">Go to Dashboard</Link>
+              </Button>
             </div>}
-            {status !== "authenticated" &&  <div className="hidden md:flex items-center space-x-4">
-              <Button 
-                variant="ghost" 
+            {status !== "authenticated" && <div className="hidden md:flex items-center space-x-4">
+              <Button
+                variant="ghost"
                 className="h-9 px-4"
                 onClick={() => openModal('signin')} // Open Sign In modal
               >
                 Sign in
               </Button>
-              <Button 
-                variant="default" 
+              <Button
+                variant="default"
                 className="h-9 px-4 bg-white text-black hover:bg-slate-200 shadow-none"
                 onClick={() => openModal('signup')} // Open Sign Up modal
               >
@@ -121,9 +121,9 @@ const Navbar = () => {
         )}
       </nav>
       {/* Auth Modals */}
-      <AuthModals 
-        isOpen={isAuthModalOpen} 
-        onClose={closeModal} 
+      <AuthModals
+        isOpen={isAuthModalOpen}
+        onClose={closeModal}
         initialView={authView}
       />
     </>
