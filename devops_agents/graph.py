@@ -10,6 +10,8 @@ from agents.docker_agent import docker_writing_agent
 from agents.pipeline_agent import pipeline_writing_agent
 from agents.monitor_agent import build_monitor_agent
 from agents.error_fixing_agent import (
+    error_analyzer_agent,
+    error_planner_agent,
     error_fixing_agent,
     error_fixing_tool_node,
     check_fix_complete,
@@ -17,19 +19,32 @@ from agents.error_fixing_agent import (
 )
 from agents.k8s_architect_agent import k8s_architect_agent
 from agents.deployment_monitor_agent import deployment_monitor_agent
+from app.kafka_build_producer import send_build_event
 
 # ============== ROUTING FUNCTIONS ==============
 def check_build_status(state):
     """Route based on build status after monitoring."""
     build_status = state.get("build_status", "")
     retry_count = state.get("retry_count", 0)
+    plan = state.get("error_fixing_plan", [])
+    step_idx = state.get("current_step_index", 0)
     
     if build_status == "success":
         return "success"
-    elif build_status == "failed" and retry_count < 3:
-        return "needs_fix"
-    else:
-        return "give_up"
+    
+    # If build failed
+    if build_status == "failed":
+        if retry_count >= 3:
+            return "give_up"
+        
+        # If we have a plan in progress, continue to next step
+        if plan and step_idx < len(plan):
+            return "continue_fix"
+        else:
+            # No plan yet or plan finished but still failing -> start fresh analysis
+            return "start_analysis"
+            
+    return "give_up"
 
 def check_deployment_status(state):
     """Route based on deployment status."""
@@ -38,6 +53,14 @@ def check_deployment_status(state):
         return "success"
     else:
         return "failed"
+
+def check_plan_exists(state):
+    """Check if we already have a plan to follow."""
+    plan = state.get("error_fixing_plan", [])
+    step_idx = state.get("current_step_index", 0)
+    if plan and step_idx < len(plan):
+        return "error_fixing_agent"
+    return "error_analyzer_agent"
 
 # ============== BUILD GRAPH ==============
 workflow = StateGraph(AgentState)
@@ -54,7 +77,9 @@ workflow.add_node("pipeline_writing_agent", pipeline_writing_agent)
 # Nodes - Build Monitor
 workflow.add_node("build_monitor_agent", build_monitor_agent)
 
-# Nodes - Error Fixing
+# Nodes - Error Planning & Fixing
+workflow.add_node("error_analyzer_agent", error_analyzer_agent)
+workflow.add_node("error_planner_agent", error_planner_agent)
 workflow.add_node("error_fixing_agent", error_fixing_agent)
 workflow.add_node("error_fixing_tool", error_fixing_tool_node)
 workflow.add_node("finalize_fix", finalize_fix)
@@ -65,8 +90,20 @@ workflow.add_node("k8s_architect_agent", k8s_architect_agent)
 workflow.add_node("deployment_monitor_agent", deployment_monitor_agent)
 
 # Nodes - Terminal States
-workflow.add_node("success", lambda x: {"build_status": "success"})
-workflow.add_node("failed", lambda x: {"build_status": "failed"})
+def mark_build_success(state):
+    send_build_event(state["project_id"], state["build_id"], "success")
+    return {"build_status": "success"}
+
+def mark_build_failed(state):
+    details = state.get("build_error_logs", "Retries exhausted") or "Retries exhausted"
+    # Truncate details if they are too long for Kafka message
+    if len(details) > 1000:
+        details = details[:1000] + "..."
+    send_build_event(state["project_id"], state["build_id"], "failed", details=details)
+    return {"build_status": "failed"}
+
+workflow.add_node("success", mark_build_success)
+workflow.add_node("failed", mark_build_failed)
 
 # ============== EDGES ==============
 workflow.set_entry_point("repo_analysis_agent")
@@ -95,12 +132,17 @@ workflow.add_conditional_edges(
     check_build_status,
     {
         "success": "k8s_architect_agent",
-        "needs_fix": "error_fixing_agent",
+        "continue_fix": "error_fixing_agent",
+        "start_analysis": "error_analyzer_agent",
         "give_up": "failed"
     }
 )
 
-# Error Fixing Flow
+# Error Planning Flow
+workflow.add_edge("error_analyzer_agent", "error_planner_agent")
+workflow.add_edge("error_planner_agent", "error_fixing_agent")
+
+# Error Execution Flow
 workflow.add_conditional_edges(
     "error_fixing_agent",
     check_fix_complete,
