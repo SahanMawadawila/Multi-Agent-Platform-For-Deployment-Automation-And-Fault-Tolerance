@@ -25,7 +25,20 @@ async def deployment_monitor_agent(state):
     # 1. Watch Rollout Status
     send_terminal_message(project_id, "⏳ Waiting for pod rollout...\n\r")
     try:
-        # wait untile 5 minutes , if not deployed then fail
+        # Wait for deployment resource to exist first (ArgoCD syncing takes time)
+        send_terminal_message(project_id, "⏳ Waiting for ArgoCD sync...\n\r")
+        for _ in range(30): # Wait up to 150s for resource creation
+            check_proc = await asyncio.create_subprocess_exec(
+                "kubectl", "get", "deployment", app_name, "-n", namespace,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await check_proc.communicate()
+            if check_proc.returncode == 0:
+                break
+            await asyncio.sleep(5)
+            
+        # check rollout status
         process = await asyncio.create_subprocess_exec(
             "kubectl", "rollout", "status", f"deployment/{app_name}", "-n", namespace,
             "--timeout=300s",
@@ -94,7 +107,14 @@ async def deployment_monitor_agent(state):
     is_healthy = False
     for _ in range(12): # Retry for 1 minute
         try:
-            resp = await asyncio.to_thread(requests.get, f"{access_url}{health_path}", timeout=5)
+            # Construct full path: http://host/app-name/health
+            # The ingress has a prefix /app-name
+            full_health_url = f"{access_url}/{app_name}{health_path}"
+            # Remove double slashes if any (except protocol)
+            full_health_url = full_health_url.replace("([^:]/)/+", "$1") 
+            
+            send_terminal_message(project_id, f"💓 Probing: {full_health_url}\n\r")
+            resp = await asyncio.to_thread(requests.get, full_health_url, timeout=5)
             if resp.status_code == 200:
                 is_healthy = True
                 break
