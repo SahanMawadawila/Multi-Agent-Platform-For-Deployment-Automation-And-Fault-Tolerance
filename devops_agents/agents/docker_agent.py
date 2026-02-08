@@ -14,8 +14,13 @@ DOCKERFILE_PROMPT = """You are a Docker expert. Generate a production-ready Dock
 ## Requirements:
 1. Use Alpine-based images when possible
 2. Use specific base image version (not 'latest')
-3. Expose the correct port
-4. Use proper CMD format (JSON array)
+3. If you need nodejs image, use node:{version}-alpine image format, with no any tags.
+4. Expose the correct port
+5. Use proper CMD format (JSON array)
+
+## Additional Instructions:
+- If a node project has postinstall, makesure to copy everything in the project directory before running npm install.
+- if executable file like mvnw or gradlew is present, add chmod +x command for it in the Dockerfile before running it.
 
 ## Project Analysis:
 - Project Type: {project_type}

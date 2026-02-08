@@ -35,8 +35,11 @@ class AsyncGitTools:
     async def list_files(local_path: str) -> List[str]:
         def _walk():
             file_list = []
+            ignore_dirs = {".git", "node_modules", "venv", ".venv", "__pycache__", "target", "dist", ".next"}
             for root, dirs, files in os.walk(local_path):
-                if ".git" in root: continue #no need to go through git folder
+                # Modify dirs in-place to skip ignored directories
+                dirs[:] = [d for d in dirs if d not in ignore_dirs]
+                
                 for file in files:
                     full_path = os.path.join(root, file)
                     rel_path = os.path.relpath(full_path, local_path).replace("\\", "/")
@@ -49,6 +52,11 @@ class AsyncGitTools:
         def _read():
             full_path = os.path.join(local_path, file_path)
             if os.path.exists(full_path):
+                # Check file size before reading
+                file_size = os.path.getsize(full_path)
+                if file_size > 100 * 1024:  # 100KB limit
+                    return f"Error: File '{file_path}' is too large ({file_size} bytes). Reading files over 100KB is disabled to prevent context overflow. Please check the file list instead if you only need to know if it exists."
+
                 try:
                     with open(full_path, 'r', encoding='utf-8') as f:
                         return f.read()
