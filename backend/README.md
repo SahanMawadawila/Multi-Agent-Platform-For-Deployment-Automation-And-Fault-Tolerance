@@ -63,3 +63,39 @@ This creates an alembic folder and alembic.ini. These files should pushed to git
 
 6. Create new migration (after making changes to models)
    alembic revision --autogenerate -m "your_message_here"
+
+---
+
+## Expose the backend locally with ngrok 🔌
+
+1. Install ngrok
+   - (download): Visit https://ngrok.com/download, extract, and add the `ngrok` binary to your PATH.
+
+2. Authenticate your ngrok client with your authtoken
+
+```bash
+ngrok config add-authtoken <YOUR_NGROK_AUTHTOKEN>
+# or (older CLI variants)
+ngrok authtoken <YOUR_NGROK_AUTHTOKEN>
+```
+
+3. Start your backend locally (example):
+
+4. Run ngrok to forward HTTP/HTTPS to your local server
+
+```bash
+ngrok http 8000
+```
+
+After starting ngrok you'll get a public URL like `https://abc123.ngrok-free.app` (HTTPS required for GitHub webhooks and OAuth callbacks).
+
+### Update the project configuration (what to change) ✅
+
+When using ngrok you should update the following so services and webhooks point to the public URL:
+
+- `.env` (or environment variables)
+  - **WEBHOOK_BASE_URL**: Set to your ngrok https URL (no trailing slash). Example:
+    ```env
+    WEBHOOK_BASE_URL=https://abc123.ngrok-free.app
+    ``
+
