@@ -107,6 +107,31 @@ async def k8s_architect_agent(state):
         
         gitops_repo_url = repo.clone_url
         data["gitops_repo_url"] = gitops_repo_url
+        
+        # 2.5 Create ArgoCD Repo Secret (for Private Repos)
+        send_terminal_message(project_id, "🔐 Configuring ArgoCD with GitHub credentials...\n\r")
+        
+        # Create Secret for ArgoCD to access private repo
+        # Label: argocd.argoproj.io/secret-type=repository
+        secret_name = f"repo-{project_id}"
+        
+        # Delete if exists
+        subprocess.run(["kubectl", "delete", "secret", secret_name, "-n", "argocd"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        cmd_secret = [
+            "kubectl", "create", "secret", "generic", secret_name,
+            "-n", "argocd",
+            f"--from-literal=type=git",
+            f"--from-literal=url={gitops_repo_url}",
+            f"--from-literal=password={settings.github_token}",
+            f"--from-literal=username={settings.github_org or 'git'}"
+        ]
+        subprocess.run(cmd_secret, check=True, stdout=subprocess.DEVNULL)
+        
+        # Label the secret so ArgoCD picks it up
+        subprocess.run(["kubectl", "label", "secret", secret_name, "-n", "argocd", "argocd.argoproj.io/secret-type=repository"], check=True, stdout=subprocess.DEVNULL)
+        
+        send_terminal_message(project_id, "✅ ArgoCD Repository Secret created.\n\r")
 
     except Exception as e:
         send_terminal_message(project_id, f"❌ GitHub Operation Failed: {str(e)}\n\r")
@@ -143,7 +168,8 @@ async def k8s_architect_agent(state):
 
     # 5. Push to GitOps Repo
     send_terminal_message(project_id, "🚀 Pushing manifests to GitOps repo...\n\r")
-    await AsyncGitTools.write_and_push(temp_dir, "app/deployment.yaml", "", "Update K8s manifests")
+    # We use bulk_push to ensure ALL generated files (deployment, service, ingress) are committed
+    await AsyncGitTools.bulk_push(temp_dir, "Update K8s manifests")
 
     # 6. Apply ArgoCD Application
     argocd_template = env.get_template("argocd-application.j2")

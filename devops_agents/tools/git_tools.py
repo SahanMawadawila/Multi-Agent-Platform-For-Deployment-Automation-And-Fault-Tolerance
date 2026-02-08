@@ -78,3 +78,21 @@ class AsyncGitTools:
             return "Pushed"
 
         return await asyncio.to_thread(_push)
+
+    @staticmethod
+    async def bulk_push(local_path: str, commit_message: str):
+        """Stages all changes in the directory, commits, and pushes."""
+        def _push():
+            repo = git.Repo(local_path)
+            # Stage all changes (new files, modifications, deletions)
+            repo.git.add(A=True)
+            
+            # Check if there are changes to commit
+            if repo.is_dirty() or repo.untracked_files:
+                repo.index.commit(commit_message)
+                origin = repo.remote(name='origin')
+                origin.push()
+                return "Pushed"
+            return "No changes"
+
+        return await asyncio.to_thread(_push)
