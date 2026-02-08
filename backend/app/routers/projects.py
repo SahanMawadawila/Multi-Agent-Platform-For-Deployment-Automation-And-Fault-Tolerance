@@ -30,6 +30,7 @@ async def list_projects(
     result_projects = await db.execute(
         select(UserProject)
         .where(UserProject.owner_id == int(user["id"]))
+        .order_by(UserProject.project_name.asc())
         .offset((page - 1) * per_page)
         .limit(per_page)
     )
@@ -167,6 +168,7 @@ async def list_deployments(
     result_deployments = await db.execute(
         select(ProjectBuild)
         .where(ProjectBuild.project_id == project_id)
+        .order_by(ProjectBuild.build_date.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)
     )

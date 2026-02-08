@@ -7,6 +7,7 @@ import os
 
 KAFKA_TERMINAL_TOPIC = os.getenv("KAFKA_TERMINAL_TOPIC", "project-terminal-events")
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_TERMINAL_CONSUMER_GROUP = os.getenv("KAFKA_TERMINAL_CONSUMER_GROUP", "project-terminal-consumers")
 
 
 
@@ -34,8 +35,11 @@ async def kafka_listener():
     consumer = AIOKafkaConsumer(
         KAFKA_TERMINAL_TOPIC,
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        group_id=KAFKA_TERMINAL_CONSUMER_GROUP,
+        auto_offset_reset="latest",
         value_deserializer=lambda v: json.loads(v.decode())
     )
+    print(f"Starting kafka_listener for topic={KAFKA_TERMINAL_TOPIC} group={KAFKA_TERMINAL_CONSUMER_GROUP}")
     await consumer.start()
     try:
         async for msg in consumer:

@@ -63,7 +63,7 @@ Your task:
 
 ## For Node.js Projects (package.json exists):
 - Read: package.json, tsconfig.json (if exists), .env.example (if exists)
-- Check for lockfiles: package-lock.json, yarn.lock, pnpm-lock.yaml
+- Check if lockfiles exist in the provided file list (e.g., package-lock.json, yarn.lock). DO NOT read lockfiles using the read_file tool as they are too large.
 - Detect framework from dependencies: next, nest, express
 - Extract: version (from engines or default to 18), scripts (build, start), port
 
@@ -130,19 +130,28 @@ async def repo_analysis_agent(state):
     # Build messages for LLM
     if not messages:
         # First call - include system prompt and file list
-        file_list_str = "\n".join(f"- {f}" for f in file_list)
+        # Truncate file list if it's too long to prevent context overflow
+        if len(file_list) > 1000:
+            file_list_str = "\n".join(f"- {f}" for f in file_list[:1000]) + f"\n\n... (truncated {len(file_list) - 1000} more files)"
+        else:
+            file_list_str = "\n".join(f"- {f}" for f in file_list)
+            
+        initial_human_message = HumanMessage(content=f"Analyze this repository. Here are the files:\n\n{file_list_str}")
         llm_messages = [
             SystemMessage(content=SYSTEM_PROMPT),
-            HumanMessage(content=f"Analyze this repository. Here are the files:\n\n{file_list_str}")
+            initial_human_message
         ]
+        
+        # Get LLM response
+        response = await llm_with_tools.ainvoke(llm_messages)
+        return {"messages": [initial_human_message, response]}
     else:
         # Subsequent calls - continue conversation
         llm_messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
-    
-    # Get LLM response
-    response = await llm_with_tools.ainvoke(llm_messages)
-    
-    return {"messages": [response]}
+        
+        # Get LLM response
+        response = await llm_with_tools.ainvoke(llm_messages)
+        return {"messages": [response]}
 
 # ============== GRAPH HELPERS ==============
 async def repo_analysis_tool_node(state):
