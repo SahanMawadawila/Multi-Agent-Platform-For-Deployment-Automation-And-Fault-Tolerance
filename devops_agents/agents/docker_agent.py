@@ -20,6 +20,7 @@ DOCKERFILE_PROMPT = """You are a Docker expert. Generate a production-ready Dock
 
 ## Additional Instructions:
 - If a node project has postinstall, makesure to copy everything in the project directory before running npm install.
+- if executable file like mvnw or gradlew is present, add chmod +x command for it in the Dockerfile before running it.
 
 ## Project Analysis:
 - Project Type: {project_type}

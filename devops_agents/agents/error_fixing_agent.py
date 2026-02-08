@@ -231,15 +231,17 @@ async def error_fixing_agent(state):
     )
     
     if not error_fixing_messages:
+        initial_human = HumanMessage(content=f"Please carry out this specific task: {current_step['task']}")
         llm_messages = [
             SystemMessage(content=system_content),
-            HumanMessage(content=f"Please carry out this specific task: {current_step['task']}")
+            initial_human
         ]
+        response = await llm_with_tools.ainvoke(llm_messages)
+        return {"error_fixing_messages": [initial_human, response]}
     else:
         llm_messages = [SystemMessage(content=system_content)] + error_fixing_messages
-        
-    response = await llm_with_tools.ainvoke(llm_messages)
-    return {"error_fixing_messages": [response]}
+        response = await llm_with_tools.ainvoke(llm_messages)
+        return {"error_fixing_messages": [response]}
 
 # ============== GRAPH HELPERS ==============
 async def error_fixing_tool_node(state):
