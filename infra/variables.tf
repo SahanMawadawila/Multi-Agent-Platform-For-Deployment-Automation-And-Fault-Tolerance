@@ -41,5 +41,5 @@ variable "intra_subnet_cidrs" {
 variable "domain_name" {
   description = "Domain name for the platform (e.g., flowpilot.dev)"
   type        = string
-  default     = "flowpilot.dev"  # Change this to your domain
+  default     = "flowpilotai.me"  # Change this to your domain
 }
