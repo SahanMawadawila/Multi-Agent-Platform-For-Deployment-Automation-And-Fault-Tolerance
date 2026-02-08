@@ -1,7 +1,7 @@
 import asyncio
 import json
 from aiokafka import AIOKafkaConsumer
-from sqlalchemy import select, update
+from sqlalchemy import select
 from app.database.database import SessionLocal
 from app.models.project_builds import ProjectBuild, BuildStatus
 from app.config import settings
