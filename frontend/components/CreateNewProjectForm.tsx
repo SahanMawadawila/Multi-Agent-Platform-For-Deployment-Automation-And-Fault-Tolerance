@@ -50,9 +50,14 @@ export default function CreateNewProjectForm() {
       const data = await response.json();
       if (data.is_accessible === true) {
         setRepoStatus("success");
-      } else {
+      } else if (data.is_private === true) {
+        // Repo exists but is private - show connect option
         setRepoStatus("connect");
-        setError("Could not access repository.");
+        setError("Repository is private or requires authentication.");
+      } else {
+        // Repo might not exist or other error
+        setRepoStatus("error");
+        setError("Could not access repository. Please check the URL.");
       }
     } catch {
       setRepoStatus("error");
@@ -77,8 +82,7 @@ export default function CreateNewProjectForm() {
       const { access_request_url } = data;
 
       // Step 2: Redirect user to GitHub access request URL in new tab
-      // window.open(access_request_url, "_blank");
-      setName(access_request_url); // Test
+      window.open(access_request_url, "_blank");
     } catch (err) {
       console.error("Error requesting repo access:", err);
     }

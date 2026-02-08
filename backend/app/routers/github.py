@@ -63,6 +63,9 @@ async def check_repo_accessible(
                 segs = [s for s in p.path.split("/") if s]
                 if len(segs) >= 2:
                     owner, repo = segs[0], segs[1]
+                    # Remove .git suffix if present
+                    if repo.endswith(".git"):
+                        repo = repo[:-4]
                     return f"https://api.github.com/repos/{owner}/{repo}"
         except Exception:
             pass
@@ -124,8 +127,9 @@ async def check_repo_accessible(
             return {"is_accessible": False, "is_private": True}
         # For other statuses (401, etc.) fall through to unauthenticated check
 
-    # Fallback: unauthenticated request
-    resp = requests.get(repo_url, headers=headers)
+    # Fallback: unauthenticated request using the API URL
+    resp = requests.get(api_url, headers=headers)
+    print(f"Fallback unauthenticated check status: {resp.status_code}")
     return {"is_accessible": resp.status_code == 200, "is_private": resp.status_code == 404}
     
 
@@ -140,10 +144,14 @@ async def get_access_request_url(
     jwt_instance = PyJWT()
     token = jwt_instance.encode({"user_id": user["id"], 'exp': time.time() + 600}, GITHUB_AUTH_SALT, algorithm="HS256")
 
+    # Required scopes:
+    # - repo: Full control of private repositories (read/write)
+    # - admin:repo_hook: Full control of repository hooks (for webhooks)
     params = {
         "client_id": github_client_id,
         "redirect_uri": "http://127.0.0.1:8000/api/github/oauth-callback/",
         "state": token,
+        "scope": "repo admin:repo_hook",
     }
 
     url = "https://github.com/login/oauth/authorize" + "?" + "&".join([f"{k}={v}" for k, v in params.items()])
