@@ -66,3 +66,8 @@ output "alb_dns_name" {
   description = "ALB DNS name (for reference)"
   value       = data.aws_lb.shared_alb.dns_name
 }
+
+output "acm_certificate_arn" {
+  description = "ACM Certificate ARN for HTTPS - Add this to your .env file as ACM_CERTIFICATE_ARN"
+  value       = aws_acm_certificate.wildcard.arn
+}
