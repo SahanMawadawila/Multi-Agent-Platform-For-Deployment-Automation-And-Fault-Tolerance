@@ -44,7 +44,7 @@ class ProjectDeploymentOutDTO(BaseModel):
     build_date: datetime
     build_status: str
     commit_id: Optional[str] = None
-    build_version: Optional[int] = None
+    build_version: Optional[str] = None
 
     class Config:
         orm_mode = True

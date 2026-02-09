@@ -376,63 +376,22 @@ async def github_webhook_push(
     
     print(f"📦 Push by {pusher}: {commit_message[:50]}... (commit: {commit_id[:8]})")
     
-    # Trigger sync for each verified project
+    # Trigger deployment for each verified project
+    # trigger_deployment_process already handles: sync, mirror, build record, Kafka job
+    from app.utils.project_deploy_trigger import trigger_deployment_process
+    from app.utils.terminal.terminal_send_message import send_terminal_message
+    
     for project in verified_projects:
+        # Log webhook receipt
+        send_terminal_message(str(project.project_id), f"📥 Received push webhook from {pusher} (commit: {commit_id[:8]})\\n\\r")
+        # Trigger full deployment process
         background_tasks.add_task(
-            sync_mirror_from_webhook,
-            str(project.project_id),
-            project.github_url,
-            project.mirror_name,
-            project.env_vars or {},
-            commit_id
+            trigger_deployment_process,
+            str(project.project_id)
         )
     
     return {
-        "message": f"Sync triggered for {len(verified_projects)} project(s)",
+        "message": f"Deployment triggered for {len(verified_projects)} project(s)",
         "commit": commit_id[:8],
         "projects": [str(p.project_id) for p in verified_projects]
     }
-
-
-async def sync_mirror_from_webhook(
-    project_id: str,
-    github_url: str,
-    mirror_name: str,
-    env_vars: dict,
-    commit_id: str
-):
-    """
-    Background task to sync code from original repo to mirror.
-    Called when a webhook push event is received.
-    """
-    from app.utils.terminal.terminal_send_message import send_terminal_message
-    from app.utils.project_deploy_trigger import trigger_deployment_process
-    
-    print(f"🔄 Starting webhook sync for project {project_id}")
-    send_terminal_message(project_id, f"📥 Received push webhook (commit: {commit_id[:8]})\n\r")
-    
-    try:
-        # Initialize mirror sync manager
-        manager = GitMirrorSync(settings.GITHUB_TOKEN, settings.GITHUB_ORG)
-        
-        send_terminal_message(project_id, "🔄 Syncing changes to mirror repository...\n\r")
-        
-        # Sync the code (this pulls from original and pushes to mirror)
-        sync_result = await asyncio.to_thread(
-            manager.sync_code,
-            github_url,
-            mirror_name,
-            env_vars
-        )
-        
-        mirror_url, synced_commit = (sync_result if isinstance(sync_result, tuple) else (sync_result, None))
-        
-        send_terminal_message(project_id, f"✅ Mirror updated successfully!\n\r")
-        send_terminal_message(project_id, f"🚀 Triggering new deployment...\n\r")
-        
-        # Trigger full deployment (Kafka job)
-        await trigger_deployment_process(project_id)
-        
-    except Exception as e:
-        print(f"❌ Webhook sync failed for {project_id}: {e}")
-        send_terminal_message(project_id, f"❌ Sync failed: {str(e)}\n\r")

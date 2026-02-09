@@ -122,23 +122,14 @@ async def trigger_deployment_process(project_id: str):
         send_terminal_message(str(project_id), "Starting deployment process...\n\r")
 
         # Step 1: Check github mirror already exists
-        mirror_name = project.mirror_name
+        # Mirror name is deterministic based on project_id
+        mirror_name = f"mirror-{project_id}"
         access_token = await get_github_token(project.owner_id, db)
-        # if access_token is None:
-        #     send_terminal_message(str(project_id), "Error: No valid GitHub OAuth token found for user.\n\r")
-        #     return
 
         try:
-            send_terminal_message(str(project_id), "Cloning and syncing code from GitHub...\n\r")
-            if project.mirror_name is None:
-                # Need to create a mirror (run blocking IO in a thread)
-                print("Creating new mirror repository...")
-                mirror_name = f"mirror-{project_id}"
-                await asyncio.to_thread(manager.create_private_mirror, mirror_name)
-                project.mirror_name = mirror_name
-                # update db
-                db.add(project)
-                await db.flush()
+            send_terminal_message(str(project_id), "Cloning and syncing code from GitHub...\\n\\r")
+            # Create mirror repo (handles existing repos gracefully - returns existing URL if 422)
+            await asyncio.to_thread(manager.create_private_mirror, mirror_name)
             print(f"Using mirror repository: {mirror_name}")
             # Run the blocking sync in a thread so we don't perform IO on the event loop
             sync_result = await asyncio.to_thread(
@@ -205,11 +196,32 @@ async def trigger_deployment_process(project_id: str):
                 print("ℹ️ WEBHOOK_BASE_URL not configured, skipping webhook setup")
                 send_terminal_message(project_id, "ℹ️ Webhook URL not configured, skipping auto-sync setup\n\r")
 
-            # Step 2: Create a build record
+            # Step 2: Get latest version and increment
+            # Query the latest build for this project to get the current version
+            latest_build_result = await db.execute(
+                select(ProjectBuild)
+                .where(ProjectBuild.project_id == project.project_id)
+                .order_by(ProjectBuild.build_id.desc())
+                .limit(1)
+            )
+            latest_build = latest_build_result.scalars().first()
+            
+            # Calculate new version (increment minor version by 0.1)
+            if latest_build and latest_build.build_version:
+                try:
+                    current_version = float(latest_build.build_version)
+                    new_version = f"{current_version + 0.1:.1f}"
+                except ValueError:
+                    new_version = "1.0"  # Fallback if version is not a valid number
+            else:
+                new_version = "1.0"  # First build
+            
+            # Create a build record with the new version
             new_build = ProjectBuild(
                 project_id=project.project_id,
                 commit_id=commit_id,
-                build_status=BuildStatus.queued
+                build_status=BuildStatus.queued,
+                build_version=new_version
             )
             db.add(new_build)
             await db.flush()              # <-- get PK without expiring

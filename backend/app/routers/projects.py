@@ -113,7 +113,38 @@ async def create_project(
 PUT /projects/{project_id}
 Update the details of an existing project.
 """
-
+@router.put("/{project_id}")
+async def update_project(
+    project_id: str,
+    update_data: dict,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(UserProject).where(UserProject.project_id == project_id)
+        .where(UserProject.owner_id == int(user["id"]))
+    )
+    project = result.scalars().first()
+    if not project:
+        return {"error": "Project not found"}
+    
+    # Update env_vars if provided
+    if "env_vars" in update_data:
+        project.env_vars = update_data["env_vars"]
+    
+    # Update project_name if provided
+    if "project_name" in update_data:
+        project.project_name = update_data["project_name"]
+    
+    # Update is_auto_deploy_enabled if provided
+    if "is_auto_deploy_enabled" in update_data:
+        project.is_auto_deploy_enabled = update_data["is_auto_deploy_enabled"]
+    
+    db.add(project)
+    await db.commit()
+    await db.refresh(project)
+    
+    return UserProjectDetailOutDTO.from_orm(project)
 
 
 """

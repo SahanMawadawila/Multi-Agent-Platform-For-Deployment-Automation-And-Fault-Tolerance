@@ -62,12 +62,6 @@ class UserProject(Base):
         nullable=True
     )
 
-    # Github mirror name
-    mirror_name = Column(
-        String,
-        nullable=True
-    )
-
     # GitHub webhook ID for auto-sync (stored as BigInteger since GitHub IDs can be large)
     webhook_id = Column(
         BigInteger,
