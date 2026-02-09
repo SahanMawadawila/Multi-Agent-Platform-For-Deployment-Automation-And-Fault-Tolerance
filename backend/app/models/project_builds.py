@@ -74,6 +74,12 @@ class ProjectBuild(Base):
         nullable=False
     )
 
+    # Duration in seconds
+    duration = Column(
+        Integer,
+        nullable=True
+    )
+
     def __repr__(self):
         return (
             f"<ProjectBuild("

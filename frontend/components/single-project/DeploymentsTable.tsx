@@ -1,10 +1,16 @@
- 'use client';
+'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, Clock, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, ChevronLeft, ChevronRight, ExternalLink, MoreVertical, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useSession } from 'next-auth/react';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface Deployment {
     id: number;
@@ -27,6 +33,7 @@ export default function DeploymentsTable({ projectId }: { projectId: string }) {
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(false);
     const [creating, setCreating] = useState(false);
+    const [rollingBack, setRollingBack] = useState<number | null>(null);
 
     const { data: session } = useSession();
 
@@ -51,7 +58,7 @@ export default function DeploymentsTable({ projectId }: { projectId: string }) {
             Failed: 'bg-red-500/10 text-red-500 border-red-500/20',
             Building: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
         };
-        
+
         return (
             <Badge variant="outline" className={`${variants[status]} flex items-center gap-1.5 px-2.5 py-0.5`}>
                 {getStatusIcon(status)}
@@ -71,7 +78,7 @@ export default function DeploymentsTable({ projectId }: { projectId: string }) {
     const fetchDeployments = useCallback(async (page = 1) => {
         if (!projectId) return;
         if (!session?.backendToken) return;
-    
+
         setLoading(true);
         try {
             const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/deployments?page=${page}&per_page=${ITEMS_PER_PAGE}`, {
@@ -117,7 +124,7 @@ export default function DeploymentsTable({ projectId }: { projectId: string }) {
 
         setCreating(true);
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/deploy`, { 
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/deploy`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -144,7 +151,7 @@ export default function DeploymentsTable({ projectId }: { projectId: string }) {
         if (diffMins < 60) return `${diffMins} minutes ago`;
         if (diffHours < 24) return `${diffHours} hours ago`;
         if (diffDays < 7) return `${diffDays} days ago`;
-        
+
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
@@ -156,7 +163,7 @@ export default function DeploymentsTable({ projectId }: { projectId: string }) {
                     disabled={creating}
                     className="bg-violet-600 text-white hover:bg-violet-700"
                 >
-                    {creating ? 'Creating...' : 'Create deployment'}
+                    {creating ? 'Creating...' : 'Create New Deployment'}
                 </Button>
             </div>
             {/* Table Container */}
@@ -218,25 +225,58 @@ export default function DeploymentsTable({ projectId }: { projectId: string }) {
 
                             {/* Commit */}
                             <div className="col-span-2 flex items-center">
-                                <div className="flex items-center gap-2">
-                                    <code className="text-slate-400 bg-slate-800/50 px-2 py-1 rounded text-xs font-mono">
-                                        {deployment.commit_id || ""}
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <code className="text-slate-400 bg-slate-800/50 px-2 py-1 rounded text-xs font-mono truncate max-w-[80px]" title={deployment.commit_id || ""}>
+                                        {deployment.commit_id ? deployment.commit_id.slice(0, 7) : "—"}
                                     </code>
-                                    <span className="text-slate-500 text-xs">
-                                        {deployment.branch}
-                                    </span>
                                 </div>
                             </div>
 
                             {/* Actions */}
                             <div className="col-span-1 flex items-center justify-end">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-slate-200"
-                                >
-                                    <ExternalLink className="w-4 h-4" />
-                                </Button>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                                            disabled={rollingBack === deployment.id}
+                                        >
+                                            <MoreVertical className="w-4 h-4" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="bg-slate-900 border-slate-700">
+                                        <DropdownMenuItem
+                                            onClick={async () => {
+                                                if (!session?.backendToken) return;
+                                                setRollingBack(deployment.id);
+                                                try {
+                                                    const res = await fetch(
+                                                        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/rollback/${deployment.id}`,
+                                                        {
+                                                            method: 'POST',
+                                                            headers: {
+                                                                'Authorization': `Bearer ${session.backendToken}`,
+                                                                'Content-Type': 'application/json',
+                                                            },
+                                                        }
+                                                    );
+                                                    if (res.ok) {
+                                                        fetchDeployments();
+                                                    }
+                                                } catch (error) {
+                                                    console.error('Rollback failed:', error);
+                                                } finally {
+                                                    setRollingBack(null);
+                                                }
+                                            }}
+                                            className="text-slate-300 hover:text-white cursor-pointer"
+                                        >
+                                            <RotateCcw className="w-4 h-4 mr-2" />
+                                            {rollingBack === deployment.id ? 'Rolling back...' : 'Rollback to this version'}
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             </div>
                         </div>
                     ))}
@@ -278,11 +318,10 @@ export default function DeploymentsTable({ projectId }: { projectId: string }) {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => setCurrentPage(page)}
-                                    className={`w-9 h-9 p-0 ${
-                                        currentPage === page
-                                            ? 'bg-violet-600 border-violet-600 text-white hover:bg-violet-700'
-                                            : 'bg-slate-900/30 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
-                                    }`}
+                                    className={`w-9 h-9 p-0 ${currentPage === page
+                                        ? 'bg-violet-600 border-violet-600 text-white hover:bg-violet-700'
+                                        : 'bg-slate-900/30 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
+                                        }`}
                                 >
                                     {page}
                                 </Button>

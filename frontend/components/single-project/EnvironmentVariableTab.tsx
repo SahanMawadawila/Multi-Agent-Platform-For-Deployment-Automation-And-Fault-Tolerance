@@ -2,35 +2,79 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import EnvFileEditor, { EnvVar } from '@/components/EnvFileEditor';
 import { Save, AlertCircle } from 'lucide-react';
 
-export default function EnvironmentVariableTab() {
-    const [envVars, setEnvVars] = useState<EnvVar[]>([
-        { key: 'DATABASE_URL', value: 'postgresql://localhost:5432/mydb' },
-        { key: 'API_KEY', value: 'your-secret-api-key-here' },
-        { key: 'NODE_ENV', value: 'production' },
-    ]);
+interface EnvironmentVariableTabProps {
+    projectId: string;
+    initialEnvVars?: Record<string, string>;
+}
+
+export default function EnvironmentVariableTab({ projectId, initialEnvVars }: EnvironmentVariableTabProps) {
+    // Convert Record<string, string> to EnvVar[] format
+    const convertToEnvVarArray = (envVars: Record<string, string> | undefined): EnvVar[] => {
+        if (!envVars || Object.keys(envVars).length === 0) {
+            return [];
+        }
+        return Object.entries(envVars).map(([key, value]) => ({ key, value }));
+    };
+
+    const [envVars, setEnvVars] = useState<EnvVar[]>(convertToEnvVarArray(initialEnvVars));
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
+
+    const { data: session } = useSession();
+
+    // Update envVars when initialEnvVars changes
+    useEffect(() => {
+        setEnvVars(convertToEnvVarArray(initialEnvVars));
+    }, [initialEnvVars]);
 
     const handleSave = async () => {
         setIsSaving(true);
         setSaveSuccess(false);
-        
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        console.log('Saving environment variables:', envVars);
-        
-        setIsSaving(false);
-        setSaveSuccess(true);
-        
-        // Hide success message after 3 seconds
-        setTimeout(() => setSaveSuccess(false), 3000);
+        setSaveError(null);
+
+        try {
+            // Convert EnvVar[] back to Record<string, string>
+            const envVarsObject: Record<string, string> = {};
+            envVars.forEach(({ key, value }) => {
+                if (key.trim()) {
+                    envVarsObject[key.trim()] = value;
+                }
+            });
+
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}`,
+                {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session?.backendToken}`,
+                    },
+                    body: JSON.stringify({ env_vars: envVarsObject }),
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error('Failed to save environment variables');
+            }
+
+            setSaveSuccess(true);
+            // Hide success message after 3 seconds
+            setTimeout(() => setSaveSuccess(false), 3000);
+        } catch (err) {
+            console.error('Error saving environment variables:', err);
+            setSaveError('Failed to save changes. Please try again.');
+            setTimeout(() => setSaveError(null), 5000);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -69,6 +113,12 @@ export default function EnvironmentVariableTab() {
                                 <span className="text-sm text-green-400 flex items-center gap-2">
                                     <span className="w-2 h-2 bg-green-400 rounded-full"></span>
                                     Changes saved successfully
+                                </span>
+                            )}
+                            {saveError && (
+                                <span className="text-sm text-red-400 flex items-center gap-2">
+                                    <span className="w-2 h-2 bg-red-400 rounded-full"></span>
+                                    {saveError}
                                 </span>
                             )}
                             <Button

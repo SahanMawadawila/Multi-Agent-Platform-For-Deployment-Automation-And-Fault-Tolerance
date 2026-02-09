@@ -74,6 +74,12 @@ class UserProject(Base):
         nullable=True
     )
 
+    # Project access URL (e.g., https://myapp.flowpilot.io)
+    project_access_url = Column(
+        String,
+        nullable=True
+    )
+
     def __repr__(self):
         return (
             f"<UserProject("
