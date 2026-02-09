@@ -4,6 +4,7 @@ from aiokafka import AIOKafkaConsumer
 from sqlalchemy import select
 from app.database.database import SessionLocal
 from app.models.project_builds import ProjectBuild, BuildStatus
+from app.models.user_project import UserProject
 from app.config import settings
 
 
@@ -74,10 +75,29 @@ class ProjectBuildEventConsumer:
                 return
 
             build.build_status = new_status
-            # Optional: update commit_id if present in details
-            commit = details.get("commit_id") if isinstance(details, dict) else None
-            if commit:
-                build.commit_id = commit
+            
+
+            # Handle details if it's a dict (success event with access_url, is_current)
+            if isinstance(details, dict):
+                
+                # Handle success: set is_current and clear from other builds
+                if details.get("is_current") and new_status == BuildStatus.success:
+                    # Clear is_current from all other builds for this project
+                    await session.execute(
+                        ProjectBuild.__table__.update()
+                        .where(ProjectBuild.project_id == build.project_id)
+                        .where(ProjectBuild.build_id != build.build_id)
+                        .values(is_current=False)
+                    )
+                    build.is_current = True
+                
+                # Update access_url in user_projects table
+                if details.get("access_url"):
+                    await session.execute(
+                        UserProject.__table__.update()
+                        .where(UserProject.project_id == build.project_id)
+                        .values(project_access_url=details["access_url"])
+                    )
 
             await session.commit()
 

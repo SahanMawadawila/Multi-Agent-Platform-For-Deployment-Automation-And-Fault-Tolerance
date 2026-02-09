@@ -4,7 +4,6 @@ import git
 from state import AgentState
 from config.settings import settings
 from app.kafka_terminal_producer import send_terminal_message
-from app.kafka_build_producer import send_build_event
 
 async def build_monitor_agent(state: AgentState):
     """
@@ -83,16 +82,12 @@ async def build_monitor_agent(state: AgentState):
                         if status == "completed":
                             if conclusion == "success":
                                 send_terminal_message(project_id, "✅ Build completed successfully!\n\r")
-                                # Notify backend of success (use provided build_id if available)
-                                send_build_event(project_id, build_id or str(run_id), "success")
                                 return {"build_status": "success"}
                             
                             if conclusion != "success": # Catch failure, cancelled, timed_out, etc.
                                 # Fetch error logs
                                 error_logs = await fetch_build_logs(session, owner, repo, run_id, headers)
                                 send_terminal_message(project_id, f"❌ Build finished with status: {conclusion}. Captured logs.\n\r")
-                                # Immediately notify backend of failure so DB can be updated
-                                send_build_event(project_id, build_id or str(run_id), "failed", details=error_logs)
                                 return {
                                     "build_status": "failed",
                                     "build_error_logs": error_logs
