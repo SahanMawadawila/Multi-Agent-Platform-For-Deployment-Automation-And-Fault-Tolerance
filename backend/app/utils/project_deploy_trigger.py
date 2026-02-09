@@ -235,6 +235,7 @@ async def trigger_deployment_process(project_id: str):
             kafka_payload = {
                 "project_id": str(project_id),
                 "build_id": str(build_id),
+                "build_version": new_version,
                 "repo_url": f"https://github.com/{settings.GITHUB_ORG}/{mirror_name}.git",
             }
 
@@ -267,6 +268,16 @@ async def trigger_rollback_process(project_id: str, build_id: int, original_vers
 
             send_terminal_message(str(project_id), f"🔄 Rolling back to version {original_version}...\\n\\r")
 
+            # Get the target build to retrieve gitops_commit_id
+            target_build_result = await db.execute(
+                select(ProjectBuild).where(ProjectBuild.build_id == build_id)
+            )
+            target_build = target_build_result.scalars().first()
+            
+            if not target_build or not target_build.gitops_commit_id:
+                send_terminal_message(str(project_id), "❌ Cannot rollback: No GitOps commit ID found for this build.\\n\\r")
+                return
+
             # Generate mirror name (deterministic)
             mirror_name = f"mirror-{project_id}"
 
@@ -274,8 +285,10 @@ async def trigger_rollback_process(project_id: str, build_id: int, original_vers
             kafka_payload = {
                 "project_id": str(project_id),
                 "build_id": str(build_id),
+                "build_version": original_version,
+                "gitops_commit_id": target_build.gitops_commit_id,
                 "repo_url": f"https://github.com/{settings.GITHUB_ORG}/{mirror_name}.git",
-                "skip_build": True,  # Skip Docker build, use existing image
+                "skip_build": True,  # Skip Docker build, revert GitOps only
             }
 
             send_terminal_message(project_id, f"🚀 Triggering rollback deployment (skip_build=True)...\\n\\r")

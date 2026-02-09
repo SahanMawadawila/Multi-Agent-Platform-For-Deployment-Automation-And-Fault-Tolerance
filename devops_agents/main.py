@@ -13,6 +13,15 @@ async def process_job(job):
     repo_url = job.get("repo_url")
     project_id = job.get("project_id")
     build_id = job.get("build_id")
+    build_version = job.get("build_version", "latest")
+    skip_build = job.get("skip_build", False)
+    gitops_commit_id = job.get("gitops_commit_id")  # For rollback
+    
+    # Handle rollback (skip_build=True)
+    if skip_build:
+        from utils.rollback_handler import handle_rollback
+        await handle_rollback(project_id, build_id, build_version, gitops_commit_id)
+        return
     
     # Notify backend that build is now in progress
     send_build_event(project_id, build_id, "in_progress")
@@ -29,6 +38,7 @@ async def process_job(job):
     initial_state = {
         "project_id": job.get("project_id"),
         "build_id": job.get("build_id"),
+        "build_version": build_version,
         "local_path": local_path,
         "file_list": files,
         "repo_owner": owner,

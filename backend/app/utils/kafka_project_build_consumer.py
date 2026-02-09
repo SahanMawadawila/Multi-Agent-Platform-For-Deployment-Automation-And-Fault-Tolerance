@@ -98,6 +98,10 @@ class ProjectBuildEventConsumer:
                         .where(UserProject.project_id == build.project_id)
                         .values(project_access_url=details["access_url"])
                     )
+                
+                # Store gitops_commit_id for rollback
+                if details.get("gitops_commit_id"):
+                    build.gitops_commit_id = details["gitops_commit_id"]
 
             await session.commit()
 

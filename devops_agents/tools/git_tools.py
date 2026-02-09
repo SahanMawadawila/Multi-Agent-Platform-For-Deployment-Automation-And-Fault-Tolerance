@@ -88,8 +88,8 @@ class AsyncGitTools:
         return await asyncio.to_thread(_push)
 
     @staticmethod
-    async def bulk_push(local_path: str, commit_message: str):
-        """Stages all changes in the directory, commits, and pushes."""
+    async def bulk_push(local_path: str, commit_message: str) -> str:
+        """Stages all changes in the directory, commits, and pushes. Returns commit SHA."""
         def _push():
             repo = git.Repo(local_path)
             # Stage all changes (new files, modifications, deletions)
@@ -97,10 +97,19 @@ class AsyncGitTools:
             
             # Check if there are changes to commit
             if repo.is_dirty() or repo.untracked_files:
-                repo.index.commit(commit_message)
+                commit = repo.index.commit(commit_message)
                 origin = repo.remote(name='origin')
                 origin.push()
-                return "Pushed"
-            return "No changes"
+                return str(commit.hexsha)
+            # Return current HEAD commit if no changes
+            return str(repo.head.commit.hexsha)
 
         return await asyncio.to_thread(_push)
+
+    @staticmethod
+    async def get_latest_commit_sha(local_path: str) -> str:
+        """Get the SHA of the latest commit in the repository."""
+        def _get_sha():
+            repo = git.Repo(local_path)
+            return str(repo.head.commit.hexsha)
+        return await asyncio.to_thread(_get_sha)

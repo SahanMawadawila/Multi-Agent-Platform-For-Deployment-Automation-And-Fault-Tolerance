@@ -91,15 +91,17 @@ workflow.add_node("deployment_monitor_agent", deployment_monitor_agent)
 
 # Nodes - Terminal States
 def mark_deployment_success(state):
-    """Send success event with access_url and is_current flag."""
+    """Send success event with access_url, is_current flag, and gitops_commit_id."""
     access_url = state.get("access_url", "")
+    gitops_commit_id = state.get("gitops_commit_id", "")
     send_build_event(
         state["project_id"], 
         state["build_id"], 
         "success",
         details={
             "access_url": access_url,
-            "is_current": True  # Mark this build as the current deployment
+            "is_current": True,  # Mark this build as the current deployment
+            "gitops_commit_id": gitops_commit_id  # For rollback tracking
         }
     )
     return {"build_status": "success", "access_url": access_url}

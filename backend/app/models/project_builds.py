@@ -80,6 +80,12 @@ class ProjectBuild(Base):
         nullable=True
     )
 
+    # GitOps commit ID for this deployment
+    gitops_commit_id = Column(
+        String,
+        nullable=True
+    )
+
     def __repr__(self):
         return (
             f"<ProjectBuild("
