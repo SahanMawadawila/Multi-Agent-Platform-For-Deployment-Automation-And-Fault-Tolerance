@@ -231,14 +231,11 @@ async def trigger_deployment_process(project_id: str):
             send_terminal_message(project_id, f"Handing over to build agent...\n\r")
 
             # Step 3: Trigger kafka job for agent
+            # Only sending fields that devops_agents actually uses
             kafka_payload = {
-                "action": 'agent-jobs',
                 "project_id": str(project_id),
-                "repo_url": f"https://github.com/{settings.GITHUB_ORG}/{mirror_name}.git",
                 "build_id": str(build_id),
-                "project_id": str(project.project_id),
-                "mirror_repo_url": mirror_url,
-                "commit_id": commit_id
+                "repo_url": f"https://github.com/{settings.GITHUB_ORG}/{mirror_name}.git",
             }
 
             # 5. Send message to kafka
@@ -255,7 +252,7 @@ async def trigger_deployment_process(project_id: str):
             return
 
 
-async def trigger_rollback_process(project_id: str, commit_id: str, original_version: str):
+async def trigger_rollback_process(project_id: str, build_id: int, original_version: str):
     """
     Trigger a rollback deployment. Just marks the target build as current and triggers deployment.
     Does NOT create a new version - true rollback behavior.
@@ -273,32 +270,12 @@ async def trigger_rollback_process(project_id: str, commit_id: str, original_ver
             # Generate mirror name (deterministic)
             mirror_name = f"mirror-{project_id}"
 
-            # Clear is_current from all builds for this project
-            await db.execute(
-                ProjectBuild.__table__.update()
-                .where(ProjectBuild.project_id == project.project_id)
-                .values(is_current=False)
-            )
-
-            # Set is_current=True on the target build (by commit_id)
-            await db.execute(
-                ProjectBuild.__table__.update()
-                .where(ProjectBuild.project_id == project.project_id)
-                .where(ProjectBuild.commit_id == commit_id)
-                .values(is_current=True)
-            )
-
-            send_terminal_message(project_id, f"✅ Marked v{original_version} as current deployment\\n\\r")
-
             # Send Kafka message with skip_build=True (use existing Docker image)
             kafka_payload = {
-                "action": 'agent-jobs',
                 "project_id": str(project_id),
+                "build_id": str(build_id),
                 "repo_url": f"https://github.com/{settings.GITHUB_ORG}/{mirror_name}.git",
-                "project_name": project.project_name,
                 "skip_build": True,  # Skip Docker build, use existing image
-                "commit_id": commit_id,
-                "rollback_version": original_version
             }
 
             send_terminal_message(project_id, f"🚀 Triggering rollback deployment (skip_build=True)...\\n\\r")

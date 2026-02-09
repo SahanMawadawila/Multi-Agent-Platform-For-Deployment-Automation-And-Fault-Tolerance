@@ -302,14 +302,11 @@ async def rollback_deployment(
     if not target_build:
         return {"error": "Build not found"}
     
-    if not target_build.commit_id:
-        return {"error": "Cannot rollback - build has no commit ID"}
-    
     if background_tasks:
         background_tasks.add_task(
             trigger_rollback_process,
             str(project.project_id),
-            target_build.commit_id,
+            target_build.build_id,
             target_build.build_version
         )
         return {"message": f"Rollback to version {target_build.build_version} started"}
