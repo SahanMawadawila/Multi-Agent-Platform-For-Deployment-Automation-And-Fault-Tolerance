@@ -2,19 +2,12 @@
 # Route 53 DNS Configuration
 #===============================================================================
 
-# Local to determine zone_id (either from created zone or external)
-locals {
-  # Use external zone ID if provided, otherwise use the created zone
-  zone_id = var.is_dns_owner ? aws_route53_zone.main[0].zone_id : var.external_zone_id
-}
-
-# Hosted Zone - Only created by DNS owner (for backwards compatibility)
-# Teammates should use infra/dns/ folder instead and set is_dns_owner = false
+# Hosted Zone - survives terraform destroy
 resource "aws_route53_zone" "main" {
-  count = var.is_dns_owner ? 1 : 0
-  name  = var.domain_name
+  name = var.domain_name
 
   lifecycle {
+    # prevent_destroy = true  # Won't be destroyed with terraform destroy
     prevent_destroy = false
   }
 
@@ -27,7 +20,7 @@ resource "aws_route53_zone" "main" {
 # Wildcard DNS record - auto-updates when ALB changes
 # Covers ALL subdomains: argocd.domain.com, app1.domain.com, etc.
 resource "aws_route53_record" "wildcard" {
-  zone_id = local.zone_id
+  zone_id = aws_route53_zone.main.zone_id
   name    = "*.${var.domain_name}"
   type    = "CNAME"
   ttl     = 60
@@ -80,7 +73,7 @@ resource "aws_route53_record" "cert_validation" {
   records         = [each.value.record]
   ttl             = 60
   type            = each.value.type
-  zone_id         = local.zone_id
+  zone_id         = aws_route53_zone.main.zone_id
 }
 
 # Wait for certificate validation to complete
