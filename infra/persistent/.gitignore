@@ -7,7 +7,3 @@ crash.log
 
 #ignore .terraform directory
 .terraform/
-
-#ignore tfvars files (contain per-person values)
-*.tfvars
-*.auto.tfvars

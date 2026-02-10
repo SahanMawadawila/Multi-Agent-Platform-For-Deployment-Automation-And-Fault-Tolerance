@@ -1,26 +1,66 @@
-#Apply terraform 
-terraform apply -auto-approve
+# Infrastructure (Terraform)
 
-#Destroy terraform
-terraform destroy -auto-approve
+## Prerequisites
 
-after apply following command must be run to update kubeconfig
+Before applying, run the **persistent DNS stack** first (one-time):
+```bash
+cd infra/persistent
+terraform init
+terraform apply
+```
+See [persistent/README.md](persistent/README.md) for full setup instructions.
+
+## Apply Infrastructure
+
+```bash
+cd infra
+
+# Get values from persistent stack
+cd persistent && terraform output zone_id && terraform output acm_certificate_arn && cd ..
+
+# Apply with persistent stack values
+terraform apply \
+  -var="route53_zone_id=<ZONE_ID>" \
+  -var="acm_certificate_arn=<ACM_ARN>"
+
+# Or use terraform.tfvars (recommended):
+terraform apply
+```
+
+After apply, update kubeconfig:
+```bash
 aws eks update-kubeconfig --region ap-south-1 --name Flow-Pilot-AI
+```
 
-when destroying following points terrform get stucked then run following commands.
+## Destroy Infrastructure
 
-1) module.vpc.aws_internet_gateway.this[0]: Still destroying.
+```bash
+terraform destroy -auto-approve
+```
 
-solution ->
+> DNS zone and ACM certificate are safe — they live in `infra/persistent/`.
+
+## Troubleshooting
+
+### 1) `module.vpc.aws_internet_gateway.this[0]`: Still destroying
+
+```bash
 # List load balancers
-aws elbv2 describe-load-balancers --region ap-south-1 --no-cli-pager --query "LoadBalancers[].{Name:LoadBalancerName,ARN:LoadBalancerArn}" --output table
+aws elbv2 describe-load-balancers --region ap-south-1 --no-cli-pager \
+  --query "LoadBalancers[].{Name:LoadBalancerName,ARN:LoadBalancerArn}" --output table
 
 # Delete each one
 aws elbv2 delete-load-balancer --load-balancer-arn <ARN> --region ap-south-1
+```
 
+### 2) `module.vpc.aws_vpc.this[0]`: Still destroying
 
-2) module.vpc.aws_vpc.this[0]: Still destroying... [id=vpc-0ba9cbaa41c1e8b4a, 00m10s elapsed]
+```bash
+aws ec2 describe-security-groups \
+  --filters "Name=vpc-id,Values=<VPC_ID>" \
+  --region ap-south-1 --no-cli-pager \
+  --query "SecurityGroups[].{ID:GroupId,Name:GroupName}" --output table
 
-solution -> aws ec2 describe-security-groups --filters "Name=vpc-id,Values=vpc-0a4935f6b417e3e75" --region ap-south-1 --no-cli-pager --query "SecurityGroups[].{ID:GroupId,Name:GroupName}" --output table
-
-aws ec2 delete-security-group --group-id <SG_ID> --region ap-south-1 ( dont delete default)
+# Delete each (don't delete default)
+aws ec2 delete-security-group --group-id <SG_ID> --region ap-south-1
+```

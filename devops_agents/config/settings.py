@@ -28,7 +28,7 @@ class Settings(BaseModel):
     aws_account_id: str = Field(default_factory=lambda: os.getenv("AWS_ACCOUNT_ID"), description="AWS Account ID")
 
     # Domain & SSL
-    domain_name: str = Field(default="flowpilotai.me", description="Base domain for deployed apps")
+    domain_name: str = Field(default_factory=lambda: os.getenv("DOMAIN_NAME", "flowpilotai.me"), description="Base domain for deployed apps")
     acm_certificate_arn: str = Field(default_factory=lambda: os.getenv("ACM_CERTIFICATE_ARN"), description="ACM Certificate ARN for HTTPS")
 
     def validate_keys(self):

@@ -39,7 +39,17 @@ variable "intra_subnet_cidrs" {
 }
 
 variable "domain_name" {
-  description = "Domain name for the platform (e.g., flowpilot.dev)"
+  description = "Domain name for the platform (e.g., flowpilotai.me)"
   type        = string
-  default     = "flowpilotai.me"  # Change this to your domain
+  default     = "flowpilotai.me" # Change this to your domain
+}
+
+variable "route53_zone_id" {
+  description = "Route53 Zone ID from the persistent stack (run: cd infra/persistent && terraform output zone_id)"
+  type        = string
+}
+
+variable "acm_certificate_arn" {
+  description = "ACM Certificate ARN from the persistent stack (run: cd infra/persistent && terraform output acm_certificate_arn)"
+  type        = string
 }
