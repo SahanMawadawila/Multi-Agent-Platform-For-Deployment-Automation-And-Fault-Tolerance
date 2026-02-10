@@ -122,23 +122,14 @@ async def trigger_deployment_process(project_id: str):
         send_terminal_message(str(project_id), "Starting deployment process...\n\r")
 
         # Step 1: Check github mirror already exists
-        mirror_name = project.mirror_name
+        # Mirror name is deterministic based on project_id
+        mirror_name = f"mirror-{project_id}"
         access_token = await get_github_token(project.owner_id, db)
-        # if access_token is None:
-        #     send_terminal_message(str(project_id), "Error: No valid GitHub OAuth token found for user.\n\r")
-        #     return
 
         try:
-            send_terminal_message(str(project_id), "Cloning and syncing code from GitHub...\n\r")
-            if project.mirror_name is None:
-                # Need to create a mirror (run blocking IO in a thread)
-                print("Creating new mirror repository...")
-                mirror_name = f"mirror-{project_id}"
-                await asyncio.to_thread(manager.create_private_mirror, mirror_name)
-                project.mirror_name = mirror_name
-                # update db
-                db.add(project)
-                await db.flush()
+            send_terminal_message(str(project_id), "Cloning and syncing code from GitHub...\\n\\r")
+            # Create mirror repo (handles existing repos gracefully - returns existing URL if 422)
+            await asyncio.to_thread(manager.create_private_mirror, mirror_name)
             print(f"Using mirror repository: {mirror_name}")
             # Run the blocking sync in a thread so we don't perform IO on the event loop
             sync_result = await asyncio.to_thread(
@@ -205,11 +196,32 @@ async def trigger_deployment_process(project_id: str):
                 print("ℹ️ WEBHOOK_BASE_URL not configured, skipping webhook setup")
                 send_terminal_message(project_id, "ℹ️ Webhook URL not configured, skipping auto-sync setup\n\r")
 
-            # Step 2: Create a build record
+            # Step 2: Get latest version and increment
+            # Query the latest build for this project to get the current version
+            latest_build_result = await db.execute(
+                select(ProjectBuild)
+                .where(ProjectBuild.project_id == project.project_id)
+                .order_by(ProjectBuild.build_id.desc())
+                .limit(1)
+            )
+            latest_build = latest_build_result.scalars().first()
+            
+            # Calculate new version (increment minor version by 0.1)
+            if latest_build and latest_build.build_version:
+                try:
+                    current_version = float(latest_build.build_version)
+                    new_version = f"{current_version + 0.1:.1f}"
+                except ValueError:
+                    new_version = "1.0"  # Fallback if version is not a valid number
+            else:
+                new_version = "1.0"  # First build
+            
+            # Create a build record with the new version
             new_build = ProjectBuild(
                 project_id=project.project_id,
                 commit_id=commit_id,
-                build_status=BuildStatus.queued
+                build_status=BuildStatus.queued,
+                build_version=new_version
             )
             db.add(new_build)
             await db.flush()              # <-- get PK without expiring
@@ -218,17 +230,13 @@ async def trigger_deployment_process(project_id: str):
 
             send_terminal_message(project_id, f"Handing over to build agent...\n\r")
 
-
-
             # Step 3: Trigger kafka job for agent
+            # Only sending fields that devops_agents actually uses
             kafka_payload = {
-                "action": 'agent-jobs',
                 "project_id": str(project_id),
-                "repo_url": f"https://github.com/{settings.GITHUB_ORG}/{mirror_name}.git",
                 "build_id": str(build_id),
-                "project_id": str(project.project_id),
-                "mirror_repo_url": mirror_url,
-                "commit_id": commit_id
+                "build_version": new_version,
+                "repo_url": f"https://github.com/{settings.GITHUB_ORG}/{mirror_name}.git",
             }
 
             # 5. Send message to kafka
@@ -243,3 +251,57 @@ async def trigger_deployment_process(project_id: str):
         except Exception as e:
             send_terminal_message(project_id, f"Error during code sync: {e}")
             return
+
+
+async def trigger_rollback_process(project_id: str, build_id: int, original_version: str):
+    """
+    Trigger a rollback deployment. Just marks the target build as current and triggers deployment.
+    Does NOT create a new version - true rollback behavior.
+    """
+    async with SessionLocal() as db:
+        try:
+            result = await db.execute(select(UserProject).where(UserProject.project_id == project_id))
+            project = result.scalars().first()
+            if not project:
+                print(f"Project with ID {project_id} not found.")
+                return
+
+            send_terminal_message(str(project_id), f"🔄 Rolling back to version {original_version}...\\n\\r")
+
+            # Get the target build to retrieve gitops_commit_id
+            target_build_result = await db.execute(
+                select(ProjectBuild).where(ProjectBuild.build_id == build_id)
+            )
+            target_build = target_build_result.scalars().first()
+            
+            if not target_build or not target_build.gitops_commit_id:
+                send_terminal_message(str(project_id), "❌ Cannot rollback: No GitOps commit ID found for this build.\\n\\r")
+                return
+
+            # Generate mirror name (deterministic)
+            mirror_name = f"mirror-{project_id}"
+
+            # Send Kafka message with skip_build=True (use existing Docker image)
+            kafka_payload = {
+                "project_id": str(project_id),
+                "build_id": str(build_id),
+                "build_version": original_version,
+                "gitops_commit_id": target_build.gitops_commit_id,
+                "repo_url": f"https://github.com/{settings.GITHUB_ORG}/{mirror_name}.git",
+                "skip_build": True,  # Skip Docker build, revert GitOps only
+            }
+
+            send_terminal_message(project_id, f"🚀 Triggering rollback deployment (skip_build=True)...\\n\\r")
+
+            producer = get_kafka_producer()
+            producer.send(settings.KAFKA_TOPIC_AGENT_JOBS, value=kafka_payload)
+            producer.flush()
+            print(f"Rollback message sent to Kafka: {kafka_payload}")
+
+            await db.commit()
+
+        except Exception as e:
+            send_terminal_message(project_id, f"❌ Error during rollback: {e}\\n\\r")
+            print(f"Rollback error: {e}")
+            return
+

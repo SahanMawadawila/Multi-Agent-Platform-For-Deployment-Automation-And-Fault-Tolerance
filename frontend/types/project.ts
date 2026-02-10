@@ -6,7 +6,8 @@ export interface DetailedProject {
   domain_name?: string;
   status?: string;
   topology_info?: any;
-  env_variables?: any[];
+  env_vars?: Record<string, string>;
+  project_access_url?: string;
 }
 
 

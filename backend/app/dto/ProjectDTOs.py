@@ -24,6 +24,7 @@ class UserProjectDetailOutDTO(BaseModel):
     status: Optional[str] = None
     topology_info: Optional[dict] = None
     env_vars: Optional[Dict[str, str]] = None
+    project_access_url: Optional[str] = None
 
     class Config:
         orm_mode = True
@@ -44,7 +45,9 @@ class ProjectDeploymentOutDTO(BaseModel):
     build_date: datetime
     build_status: str
     commit_id: Optional[str] = None
-    build_version: Optional[int] = None
+    build_version: Optional[str] = None
+    duration: Optional[int] = None
+    is_current: bool = False
 
     class Config:
         orm_mode = True

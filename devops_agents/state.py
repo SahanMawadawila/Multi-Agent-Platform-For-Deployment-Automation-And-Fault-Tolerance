@@ -6,6 +6,7 @@ from agents.repo_analyst import RepoAnalysisOutput
 class AgentState(TypedDict):
     project_id: str  
     build_id: str # The unique ID for this specific build/run
+    build_version: str  # Version string (e.g., "1.0", "1.1")
     local_path: str
     file_list: List[str]
     repo_owner: str
@@ -21,6 +22,8 @@ class AgentState(TypedDict):
     deployment_status: Optional[str]
     access_url: Optional[str]
     monitor_logs: Optional[str]
+    gitops_commit_id: Optional[str]  # GitOps repo commit SHA for rollback
     error_fixing_plan: Optional[List[dict]] # List of { "id": int, "task": str, "status": str }
     current_step_index: int
     analysis_results: Optional[str]
+    start_time: Optional[float]  # time.time() when job started, for duration calc

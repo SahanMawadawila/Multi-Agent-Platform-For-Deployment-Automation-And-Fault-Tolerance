@@ -62,12 +62,6 @@ class UserProject(Base):
         nullable=True
     )
 
-    # Github mirror name
-    mirror_name = Column(
-        String,
-        nullable=True
-    )
-
     # GitHub webhook ID for auto-sync (stored as BigInteger since GitHub IDs can be large)
     webhook_id = Column(
         BigInteger,
@@ -76,6 +70,12 @@ class UserProject(Base):
 
     # Webhook secret for verifying payloads
     webhook_secret = Column(
+        String,
+        nullable=True
+    )
+
+    # Project access URL (e.g., https://myapp.flowpilot.io)
+    project_access_url = Column(
         String,
         nullable=True
     )

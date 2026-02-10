@@ -113,7 +113,38 @@ async def create_project(
 PUT /projects/{project_id}
 Update the details of an existing project.
 """
-
+@router.put("/{project_id}")
+async def update_project(
+    project_id: str,
+    update_data: dict,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(UserProject).where(UserProject.project_id == project_id)
+        .where(UserProject.owner_id == int(user["id"]))
+    )
+    project = result.scalars().first()
+    if not project:
+        return {"error": "Project not found"}
+    
+    # Update env_vars if provided
+    if "env_vars" in update_data:
+        project.env_vars = update_data["env_vars"]
+    
+    # Update project_name if provided
+    if "project_name" in update_data:
+        project.project_name = update_data["project_name"]
+    
+    # Update is_auto_deploy_enabled if provided
+    if "is_auto_deploy_enabled" in update_data:
+        project.is_auto_deploy_enabled = update_data["is_auto_deploy_enabled"]
+    
+    db.add(project)
+    await db.commit()
+    await db.refresh(project)
+    
+    return UserProjectDetailOutDTO.from_orm(project)
 
 
 """
@@ -190,3 +221,94 @@ async def list_deployments(
             "total_pages": (len(total_deployments) + per_page - 1) // per_page,
         },
     }
+
+
+"""
+GET /projects/{project_id}/current-deployment
+Get the current active deployment for the project.
+"""
+@router.get("/{project_id}/current-deployment")
+async def get_current_deployment(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    # Verify project ownership
+    result = await db.execute(
+        select(UserProject).where(UserProject.project_id == project_id)
+        .where(UserProject.owner_id == int(user["id"]))
+    )
+    project = result.scalars().first()
+    if not project:
+        return {"error": "Project not found"}
+    
+    # Get current deployment (is_current=True)
+    result = await db.execute(
+        select(ProjectBuild)
+        .where(ProjectBuild.project_id == project_id)
+        .where(ProjectBuild.is_current == True)
+        .limit(1)
+    )
+    current_build = result.scalars().first()
+    
+    if not current_build:
+        # Fallback to latest successful build
+        result = await db.execute(
+            select(ProjectBuild)
+            .where(ProjectBuild.project_id == project_id)
+            .where(ProjectBuild.build_status == BuildStatus.success)
+            .order_by(ProjectBuild.build_date.desc())
+            .limit(1)
+        )
+        current_build = result.scalars().first()
+    
+    if not current_build:
+        return {"deployment": None}
+    
+    return {"deployment": ProjectDeploymentOutDTO.from_orm(current_build)}
+
+
+"""
+POST /projects/{project_id}/rollback/{build_id}
+Rollback to a previous deployment. Uses existing commit and skips rebuild.
+"""
+@router.post("/{project_id}/rollback/{build_id}")
+async def rollback_deployment(
+    project_id: str,
+    build_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None
+):
+    from app.utils.project_deploy_trigger import trigger_rollback_process
+    
+    # Verify project ownership
+    result = await db.execute(
+        select(UserProject).where(UserProject.project_id == project_id)
+        .where(UserProject.owner_id == int(user["id"]))
+    )
+    project = result.scalars().first()
+    if not project:
+        return {"error": "Project not found"}
+    
+    # Get the build to rollback to
+    result = await db.execute(
+        select(ProjectBuild)
+        .where(ProjectBuild.build_id == build_id)
+        .where(ProjectBuild.project_id == project_id)
+    )
+    target_build = result.scalars().first()
+    
+    if not target_build:
+        return {"error": "Build not found"}
+    
+    if background_tasks:
+        background_tasks.add_task(
+            trigger_rollback_process,
+            str(project.project_id),
+            target_build.build_id,
+            target_build.build_version
+        )
+        return {"message": f"Rollback to version {target_build.build_version} started"}
+    else:
+        return {"error": "Background tasks not available"}

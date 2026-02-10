@@ -38,11 +38,11 @@ class ProjectBuild(Base):
         nullable=False
     )
     
-    # build_version int
+    # build_version string (semantic versioning: "1.0", "1.1", etc.)
     build_version = Column(
-        Integer, 
+        String, 
         nullable=False,
-        default=0 # No builds will have version 0
+        default="1.0"
     )
     
     # build_date datetime
@@ -72,6 +72,18 @@ class ProjectBuild(Base):
         Boolean, 
         default=False, 
         nullable=False
+    )
+
+    # Duration in seconds
+    duration = Column(
+        Integer,
+        nullable=True
+    )
+
+    # GitOps commit ID for this deployment
+    gitops_commit_id = Column(
+        String,
+        nullable=True
     )
 
     def __repr__(self):

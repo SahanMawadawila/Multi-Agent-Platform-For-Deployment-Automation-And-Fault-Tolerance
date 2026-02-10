@@ -69,9 +69,9 @@ export default function ProjectDetailPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>("overview");
 
-  const {data} = useSession();
+  const { data } = useSession();
   const token = data?.backendToken;
-  
+
   useEffect(() => {
     if (!token) return;
     if (!projectId) return;
@@ -95,36 +95,36 @@ export default function ProjectDetailPage() {
 
 
   return (
-    <TerminalSocketProvider projectId={projectId || ""} accessToken={token||""}>
+    <TerminalSocketProvider projectId={projectId || ""} accessToken={token || ""}>
       <div className="space-y-8">
-        
+
         {/* Page Header */}
         <h1 className="text-3xl font-bold text-white border-b border-slate-800 pb-4">
           {projectData.project_name}
         </h1>
 
         <div className="w-full">
-          
-            <Tabs defaultValue="overview" className="w-full" onValueChange={setActiveTab} value={activeTab} >
-                <TabsList>
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="deployments">Deployments</TabsTrigger>
-                    <TabsTrigger value="environment">Environment</TabsTrigger>
-                    <TabsTrigger value="settings">Settings</TabsTrigger>
-                </TabsList>
-                <TabsContent value="overview" forceMount={true} hidden={activeTab !== "overview"}>
-                  <ProjectOverview />
-                </TabsContent>
-                <TabsContent value="deployments" >
-                  <DeploymentsTable projectId={projectId || ""} />
-                </TabsContent>
-                <TabsContent value="environment">
-                  <EnvironmentVariableTab />
-                </TabsContent>
-                <TabsContent value="settings">
-                  <SettingsTabContent project={projectData} />
-                </TabsContent>
-            </Tabs>
+
+          <Tabs defaultValue="overview" className="w-full" onValueChange={setActiveTab} value={activeTab} >
+            <TabsList>
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="deployments">Deployments</TabsTrigger>
+              <TabsTrigger value="environment">Environment</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
+            </TabsList>
+            <TabsContent value="overview" forceMount={true} hidden={activeTab !== "overview"}>
+              <ProjectOverview project={projectData} />
+            </TabsContent>
+            <TabsContent value="deployments" >
+              <DeploymentsTable projectId={projectId || ""} />
+            </TabsContent>
+            <TabsContent value="environment">
+              <EnvironmentVariableTab projectId={projectId || ""} initialEnvVars={projectData.env_vars} />
+            </TabsContent>
+            <TabsContent value="settings">
+              <SettingsTabContent project={projectData} />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </TerminalSocketProvider>

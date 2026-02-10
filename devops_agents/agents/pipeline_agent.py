@@ -73,8 +73,8 @@ def set_github_secret(owner: str, repo: str, secret_name: str, secret_value: str
         return False
 
 # ============== WORKFLOW TEMPLATE ==============
-def generate_workflow_content(aws_region: str, ecr_repo_name: str) -> str:
-    """Generate GitHub Actions workflow for AWS ECR deployment."""
+def generate_workflow_content(aws_region: str, ecr_repo_name: str, version: str) -> str:
+    """Generate GitHub Actions workflow for AWS ECR deployment with specific version tag."""
     return f"""name: Build and Push to AWS ECR
 
 on:
@@ -85,6 +85,7 @@ on:
 env:
   AWS_REGION: {aws_region}
   ECR_REPOSITORY: {ecr_repo_name}
+  IMAGE_TAG: "{version}"
 
 jobs:
   build-and-push:
@@ -111,11 +112,10 @@ jobs:
         id: build-image
         env:
           ECR_REGISTRY: ${{{{ steps.login-ecr.outputs.registry }}}}
-          IMAGE_TAG: latest
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 """
 
 # ============== MAIN AGENT ==============
@@ -123,6 +123,7 @@ async def pipeline_writing_agent(state: AgentState):
     """Generates CI/CD pipeline for AWS ECR deployment."""
     
     project_id = state.get("project_id", "")
+    build_version = state.get("build_version", "latest")
     local_path = state["local_path"]
     repo_owner = state["repo_owner"]
     repo_name = state["repo_name"]
@@ -146,25 +147,23 @@ async def pipeline_writing_agent(state: AgentState):
     set_github_secret(repo_owner, repo_name, "AWS_ACCESS_KEY_ID", settings.aws_access_key)
     set_github_secret(repo_owner, repo_name, "AWS_SECRET_ACCESS_KEY", settings.aws_secret_key)
     
-    # Generate and push workflow
-    send_terminal_message(project_id, "📝 Generating GitHub Actions workflow...\n\r")
-    workflow_content = generate_workflow_content(settings.aws_region, ecr_repo_name)
+    # Generate and push workflow with version baked in
+    send_terminal_message(project_id, f"📝 Generating GitHub Actions workflow (version={build_version})...\n\r")
+    workflow_content = generate_workflow_content(settings.aws_region, ecr_repo_name, build_version)
     
     await AsyncGitTools.write_and_push(
         local_path, 
         ".github/workflows/ci.yml", 
         workflow_content, 
-        "feat: Add automated AWS ECR pipeline"
+        f"feat: Update pipeline for version {build_version}"
     )
     
     send_terminal_message(project_id, "✅ CI/CD pipeline configured successfully!\n\r")
     
-    # Construct image URL (ecr_uri/repo_name:latest)
-    # We need to get the registry URI. Usually: account_id.dkr.ecr.region.amazonaws.com
-    
+    # Construct image URL with version tag
     try:
         registry_uri = f"{settings.aws_account_id}.dkr.ecr.{settings.aws_region}.amazonaws.com"
-        image_url = f"{registry_uri}/{ecr_repo_name}:latest"
+        image_url = f"{registry_uri}/{ecr_repo_name}:{build_version}"
     except Exception:
         image_url = f"Error-Resolving-Image-URL"
 

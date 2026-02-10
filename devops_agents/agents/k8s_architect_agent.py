@@ -171,7 +171,9 @@ async def k8s_architect_agent(state):
     # 5. Push to GitOps Repo
     send_terminal_message(project_id, "🚀 Pushing manifests to GitOps repo...\n\r")
     # We use bulk_push to ensure ALL generated files (deployment, service, ingress) are committed
-    await AsyncGitTools.bulk_push(temp_dir, "Update K8s manifests")
+    # bulk_push returns the commit SHA
+    gitops_commit_id = await AsyncGitTools.bulk_push(temp_dir, "Update K8s manifests")
+    send_terminal_message(project_id, f"📌 GitOps commit: {gitops_commit_id[:7]}\n\r")
 
     # 6. Apply ArgoCD Application
     argocd_template = env.get_template("argocd-application.j2")
@@ -200,4 +202,4 @@ async def k8s_architect_agent(state):
     except FileNotFoundError:
         send_terminal_message(project_id, "⚠️ kubectl not found. Skipping ArgoCD application.\n\r")
 
-    return {"k8s_status": "success", "gitops_repo": gitops_repo_url}
+    return {"k8s_status": "success", "gitops_repo": gitops_repo_url, "gitops_commit_id": gitops_commit_id}
