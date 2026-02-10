@@ -27,6 +27,10 @@ class Settings(BaseModel):
     aws_region: str = Field(default="ap-south-1", description="Default bucket region")
     aws_account_id: str = Field(default_factory=lambda: os.getenv("AWS_ACCOUNT_ID"), description="AWS Account ID")
 
+    # Domain & SSL
+    domain_name: str = Field(default="flowpilotai.me", description="Base domain for deployed apps")
+    acm_certificate_arn: str = Field(default_factory=lambda: os.getenv("ACM_CERTIFICATE_ARN"), description="ACM Certificate ARN for HTTPS")
+
     def validate_keys(self):
         """Checks if critical keys are missing."""
         if not self.openai_key:

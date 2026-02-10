@@ -47,7 +47,9 @@ async def k8s_architect_agent(state):
         "memory_limit": getattr(analysis, "memory_limit", "256Mi"),
         "cpu_limit": getattr(analysis, "cpu_limit", "200m"),
         "health_check_path": getattr(analysis, "health_check_path", "/"),
-        "image_pull_secret": "regcred"
+        "image_pull_secret": "regcred",
+        "domain_name": settings.domain_name,
+        "acm_certificate_arn": settings.acm_certificate_arn
     }
 
     # 1.5 Create Image Pull Secret (Kubernetes)
