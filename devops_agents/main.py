@@ -2,7 +2,8 @@ from app.kafka_terminal_producer import send_terminal_message
 from app.kafka_build_producer import send_build_event
 import dotenv
 import asyncio
-import json 
+import json
+import time 
 from aiokafka import AIOKafkaConsumer  
 from config.settings import settings  
 from graph import app  
@@ -47,7 +48,8 @@ async def process_job(job):
         "retry_count": 0,
         "error_fixing_plan": None,
         "current_step_index": 0,
-        "analysis_results": None
+        "analysis_results": None,
+        "start_time": time.time(),
     }
 
     #This is just for debug purposes

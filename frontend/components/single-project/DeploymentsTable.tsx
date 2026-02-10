@@ -97,7 +97,7 @@ export default function DeploymentsTable({ projectId }: { projectId: string }) {
                 version: d.build_version ?? d.build_id ?? idx,
                 date: d.build_date,
                 status: mapStatus(d.build_status) as Deployment['status'],
-                duration: d.duration ?? '—',
+                duration: d.duration != null ? formatDuration(d.duration) : '—',
                 type: d.build_version === data.current_version ? 'Current' : 'Previous',
                 commit_id: d.commit_id,
                 branch: d.branch,
@@ -153,6 +153,16 @@ export default function DeploymentsTable({ projectId }: { projectId: string }) {
         if (diffDays < 7) return `${diffDays} days ago`;
 
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    const formatDuration = (seconds: number): string => {
+        if (seconds < 60) return `${seconds}s`;
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        if (mins < 60) return `${mins}m ${secs}s`;
+        const hrs = Math.floor(mins / 60);
+        const remainMins = mins % 60;
+        return `${hrs}h ${remainMins}m`;
     };
 
     return (

@@ -1,3 +1,4 @@
+import time
 from langgraph.graph import StateGraph, END  
 from state import AgentState
 from agents.repo_analyst import (
@@ -91,28 +92,41 @@ workflow.add_node("deployment_monitor_agent", deployment_monitor_agent)
 
 # Nodes - Terminal States
 def mark_deployment_success(state):
-    """Send success event with access_url, is_current flag, and gitops_commit_id."""
+    """Send success event with access_url, is_current flag, gitops_commit_id, and duration."""
     access_url = state.get("access_url", "")
     gitops_commit_id = state.get("gitops_commit_id", "")
+    start_time = state.get("start_time")
+    duration = int(time.time() - start_time) if start_time else None
     send_build_event(
         state["project_id"], 
         state["build_id"], 
         "success",
         details={
             "access_url": access_url,
-            "is_current": True,  # Mark this build as the current deployment
-            "gitops_commit_id": gitops_commit_id  # For rollback tracking
+            "is_current": True,
+            "gitops_commit_id": gitops_commit_id,
+            "duration": duration
         }
     )
     return {"build_status": "success", "access_url": access_url}
 
 def mark_deployment_failed(state):
-    """Send failure event with error details."""
+    """Send failure event with error details and duration."""
     error_logs = state.get("build_error_logs", "") or state.get("monitor_logs", "") or "Deployment failed"
     # Truncate details if they are too long for Kafka message
     if len(error_logs) > 1000:
         error_logs = error_logs[:1000] + "..."
-    send_build_event(state["project_id"], state["build_id"], "failed", details=error_logs)
+    start_time = state.get("start_time")
+    duration = int(time.time() - start_time) if start_time else None
+    send_build_event(
+        state["project_id"], 
+        state["build_id"], 
+        "failed", 
+        details={
+            "error": error_logs,
+            "duration": duration
+        }
+    )
     return {"build_status": "failed"}
 
 workflow.add_node("success", mark_deployment_success)

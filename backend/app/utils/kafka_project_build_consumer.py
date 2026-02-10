@@ -103,6 +103,10 @@ class ProjectBuildEventConsumer:
                 if details.get("gitops_commit_id"):
                     build.gitops_commit_id = details["gitops_commit_id"]
 
+                # Store duration
+                if details.get("duration") is not None:
+                    build.duration = details["duration"]
+
             await session.commit()
 
 
