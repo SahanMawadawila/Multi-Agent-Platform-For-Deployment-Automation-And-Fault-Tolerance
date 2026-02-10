@@ -12,18 +12,15 @@ See [persistent/README.md](persistent/README.md) for full setup instructions.
 
 ## Apply Infrastructure
 
+Create `infra/terraform.tfvars` with values from the persistent stack (one-time, gitignored):
+```hcl
+route53_zone_id     = "<ZONE_ID>"       # from: cd persistent && terraform output zone_id
+acm_certificate_arn = "<ACM_ARN>"       # from: cd persistent && terraform output acm_certificate_arn
+```
+
+Then apply:
 ```bash
 cd infra
-
-# Get values from persistent stack
-cd persistent && terraform output zone_id && terraform output acm_certificate_arn && cd ..
-
-# Apply with persistent stack values
-terraform apply \
-  -var="route53_zone_id=<ZONE_ID>" \
-  -var="acm_certificate_arn=<ACM_ARN>"
-
-# Or use terraform.tfvars (recommended):
 terraform apply
 ```
 

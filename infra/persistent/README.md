@@ -60,11 +60,9 @@ Value: [Person B's 4 nameservers]
 
 > Only needed if using separate subdomains per person.
 
-**1. Update `variables.tf`:**
+**1. Create `infra/persistent/terraform.tfvars`:**
 ```hcl
-variable "domain_name" {
-  default = "janani.flowpilotai.me"  # Your subdomain
-}
+domain_name = "janani.flowpilotai.me"  # Your subdomain
 ```
 
 **2. Apply this stack:**
@@ -90,16 +88,9 @@ terraform output acm_certificate_arn
 
 ## Every `terraform apply` on Main Infra Stack
 
-When you apply the main `infra/` stack, you need to provide the persistent stack outputs:
+When you apply the main `infra/` stack, you need to provide the persistent stack outputs.
 
-```bash
-cd infra
-terraform apply \
-  -var="route53_zone_id=Z1234567890ABC" \
-  -var="acm_certificate_arn=arn:aws:acm:ap-south-1:123456:certificate/abc-123"
-```
-
-Or create a `terraform.tfvars` file:
+**Create `infra/terraform.tfvars`** (one-time, gitignored):
 ```hcl
 route53_zone_id     = "Z1234567890ABC"
 acm_certificate_arn = "arn:aws:acm:ap-south-1:123456:certificate/abc-123"
@@ -107,6 +98,7 @@ acm_certificate_arn = "arn:aws:acm:ap-south-1:123456:certificate/abc-123"
 
 Then simply:
 ```bash
+cd infra
 terraform apply
 ```
 
