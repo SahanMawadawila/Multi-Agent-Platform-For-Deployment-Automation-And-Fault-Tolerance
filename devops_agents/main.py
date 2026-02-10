@@ -3,7 +3,8 @@ from app.kafka_build_producer import send_build_event
 import dotenv
 import asyncio
 import json
-import time 
+import time
+import os
 from aiokafka import AIOKafkaConsumer  
 from config.settings import settings  
 from graph import app  
@@ -30,7 +31,7 @@ async def process_job(job):
     repo_name_full = repo_url.split("github.com/")[-1].replace(".git", "")
     owner, name = repo_name_full.split("/")
     
-    local_path = f"temp/{name}"
+    local_path = os.path.abspath(f"temp/{name}")
     
     # Execute setup steps before the graph
     await AsyncGitTools.clone_repository(repo_url, local_path)
