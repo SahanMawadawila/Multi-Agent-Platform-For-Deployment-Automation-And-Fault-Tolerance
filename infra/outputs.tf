@@ -53,8 +53,8 @@ output "argocd_url" {
 
 # DNS Outputs
 output "nameservers" {
-  description = "Set these nameservers in your domain registrar (GoDaddy) - ONE TIME ONLY"
-  value       = aws_route53_zone.main.name_servers
+  description = "Set these nameservers in your domain registrar (only for DNS owner)"
+  value       = var.is_dns_owner ? aws_route53_zone.main[0].name_servers : []
 }
 
 output "domain_name" {

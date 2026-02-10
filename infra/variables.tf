@@ -39,7 +39,33 @@ variable "intra_subnet_cidrs" {
 }
 
 variable "domain_name" {
-  description = "Domain name for the platform (e.g., flowpilot.dev)"
+  description = "Domain name for the platform (e.g., flowpilot.dev or john.flowpilot.dev for teammates)"
   type        = string
-  default     = "flowpilotai.me"  # Change this to your domain
+  default     = "flowpilotai.me"  # Change this to your domain or subdomain
+}
+
+#===============================================================================
+# DNS Configuration Options
+#===============================================================================
+
+variable "is_dns_owner" {
+  description = <<-EOT
+    Set to true if you own the root domain and manage the central DNS.
+    Set to false if you're a teammate using a delegated subdomain.
+    
+    - true:  Creates Route53 zone (for DNS owner only - use infra/dns instead)
+    - false: Expects you to have your own Route53 zone for your subdomain
+  EOT
+  type        = bool
+  default     = false  # Default to teammate mode (safer)
+}
+
+variable "external_zone_id" {
+  description = <<-EOT
+    Route53 Zone ID for your domain/subdomain.
+    Required when is_dns_owner = false.
+    Get this from your own Route53 hosted zone in your AWS account.
+  EOT
+  type        = string
+  default     = ""
 }
