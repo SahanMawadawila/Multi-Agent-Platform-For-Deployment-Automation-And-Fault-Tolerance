@@ -85,7 +85,7 @@ on:
 env:
   AWS_REGION: {aws_region}
   ECR_REPOSITORY: {ecr_repo_name}
-  IMAGE_TAG: {version}
+  IMAGE_TAG: "{version}"
 
 jobs:
   build-and-push:

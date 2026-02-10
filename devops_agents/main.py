@@ -62,7 +62,10 @@ async def consume():
         settings.kafka_topic,
         bootstrap_servers=settings.kafka_server,
         group_id="agent-group",
-        value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+        value_deserializer=lambda x: json.loads(x.decode('utf-8')),
+        session_timeout_ms=60000,        # 60s before Kafka considers consumer dead
+        heartbeat_interval_ms=10000,     # Send heartbeat every 10s
+        max_poll_interval_ms=600000,     # Allow 10 min between polls (for long jobs)
     )
 
     await consumer.start()
