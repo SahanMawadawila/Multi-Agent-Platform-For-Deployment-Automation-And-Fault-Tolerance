@@ -35,6 +35,7 @@ class AgentState(TypedDict):
     error_fixing_plan: Optional[List[dict]] # List of { "id": int, "task": str, "status": str }
     current_step_index: int
     analysis_results: Optional[str]
+    start_time: Optional[float]  # time.time() when job started, for duration calc
     components: List[MonorepoComponent] # For monorepo support
     docker_output_path: Optional[str] # For Monorepo support (explicit Dockerfile path)
     dockerfile_content: Optional[str] # Temp storage for Dockerfile content between nodes

@@ -22,6 +22,9 @@ async def deployment_monitor_agent(state):
     app_name = f"app-{project_id}"
     health_path = getattr(analysis, "health_check_path", "/")
     
+    # Build the custom HTTPS URL
+    access_url = f"https://{app_name}.{settings.domain_name}"
+    
     # 1. Watch Rollout Status
     send_terminal_message(project_id, "⏳ Waiting for pod rollout...\n\r")
     try:
@@ -68,53 +71,19 @@ async def deployment_monitor_agent(state):
     except Exception as e:
         return {"deployment_status": "failed", "monitor_logs": str(e)}
 
-    # 2. Get External URL
-    send_terminal_message(project_id, "🌐 Resolving external URL...\n\r")
-    access_url = None
-    
-    for _ in range(12): # Retry for 1 minute (12 * 5s)
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "kubectl", "get", "ingress", app_name, "-n", namespace, "-o", "json",
-                stdout=asyncio.subprocess.PIPE
-            )
-            out, _ = await proc.communicate()
-            data = json.loads(out)
-            
-            # Look for LoadBalancer Hostname (common in AWS ALB)
-            ingress_status = data.get("status", {}).get("loadBalancer", {}).get("ingress", [])
-            if ingress_status and "hostname" in ingress_status[0]:
-                access_url = f"http://{ingress_status[0]['hostname']}"
-                break
-                
-        except Exception:
-            pass
-            
-        await asyncio.sleep(5)
-    
-    if not access_url:
-        send_terminal_message(project_id, "⚠️ Could not resolve Ingress hostname (ALB provisioning takes time).\n\r")
-        # Don't fail the pipeline, as ALB might just be slow. Provide kubectl command instead.
-        return {
-            "deployment_status": "success", 
-            "access_url": "Pending (Check AWS Console or 'kubectl get ingress')"
-        }
+    # 2. Display Access URL
+    send_terminal_message(project_id, f"🌐 App URL: {access_url}\n\r")
 
     # 3. Liveness Check (Real HTTP Request)
-    send_terminal_message(project_id, f"💓 Checking Liveness: {access_url}{health_path}\n\r")
+    health_url = f"{access_url}{health_path}"
+    send_terminal_message(project_id, f"💓 Checking Liveness: {health_url}\n\r")
     
-    # Retry logic for application startup (e.g. valid hostname but app 502s initially)
+    # Retry logic for application startup (DNS propagation + app startup time)
     is_healthy = False
-    for _ in range(12): # Retry for 1 minute
+    for _ in range(24): # Retry for 2 minutes (24 * 5s)
         try:
-            # Construct full path: http://host/app-name/health
-            # The ingress has a prefix /app-name
-            full_health_url = f"{access_url}/{app_name}{health_path}"
-            # Remove double slashes if any (except protocol)
-            full_health_url = full_health_url.replace("([^:]/)/+", "$1") 
-            
-            send_terminal_message(project_id, f"💓 Probing: {full_health_url}\n\r")
-            resp = await asyncio.to_thread(requests.get, full_health_url, timeout=5)
+            send_terminal_message(project_id, f"💓 Probing: {health_url}\n\r")
+            resp = await asyncio.to_thread(requests.get, health_url, timeout=10, verify=True)
             if resp.status_code == 200:
                 is_healthy = True
                 break
@@ -129,7 +98,7 @@ async def deployment_monitor_agent(state):
             "access_url": access_url
         }
     else:
-        send_terminal_message(project_id, f"⚠️ App is deployed but health check failed at {access_url}{health_path}\n\r")
+        send_terminal_message(project_id, f"⚠️ App is deployed but health check failed at {health_url}\n\r")
         return {
             "deployment_status": "unhealthy", # Partial success
             "access_url": access_url

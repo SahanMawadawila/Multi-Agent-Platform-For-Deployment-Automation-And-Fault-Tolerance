@@ -1,26 +1,12 @@
 #===============================================================================
-# Route 53 DNS Configuration
+# DNS Record — Points wildcard subdomain to ALB
+# Route53 zone and ACM certificate are in infra/persistent/ (never destroyed)
 #===============================================================================
 
-# Hosted Zone - survives terraform destroy
-resource "aws_route53_zone" "main" {
-  name = var.domain_name
-
-  lifecycle {
-    # prevent_destroy = true  # Won't be destroyed with terraform destroy
-    prevent_destroy = false
-  }
-
-  tags = {
-    Environment = "dev"
-    Project     = var.cluster_name
-  }
-}
-
-# Wildcard DNS record - auto-updates when ALB changes
-# Covers ALL subdomains: argocd.domain.com, app1.domain.com, etc.
+# Wildcard DNS record — auto-updates when ALB changes
+# Covers ALL subdomains: argocd.domain.com, app-42.domain.com, etc.
 resource "aws_route53_record" "wildcard" {
-  zone_id = aws_route53_zone.main.zone_id
+  zone_id = var.route53_zone_id
   name    = "*.${var.domain_name}"
   type    = "CNAME"
   ttl     = 60
