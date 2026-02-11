@@ -21,6 +21,8 @@ DOCKERFILE_PROMPT = """You are a Docker expert. Generate a production-ready Dock
 ## Additional Instructions:
 - If a node project has postinstall, makesure to copy everything in the project directory before running npm install.
 - if executable file like mvnw or gradlew is present, add chmod +x command for it in the Dockerfile before running it.
+- for pure react apps, build it and serve with a lightweight web server like nginx.
+- For Spring Boot apps, use a multi-determine weather to build as war or jar and use appropriate base images and commands.
 
 ## Project Analysis:
 - Project Type: {project_type}
@@ -82,12 +84,15 @@ async def docker_writing_agent(state: AgentState):
         lines = dockerfile_content.split("\n")
         dockerfile_content = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
     
-    send_terminal_message(project_id, "📝 Dockerfile generated. Pushing to repository...\n\r")
+    # Check if a custom output path is set in the state (for Monorepo support)
+    docker_output_path = state.get("docker_output_path", "Dockerfile")
+    
+    send_terminal_message(project_id, f"📝 Dockerfile generated at {docker_output_path}. Pushing to repository...\n\r")
     
     # Push to repository
     await AsyncGitTools.write_and_push(
         local_path,
-        "Dockerfile",
+        docker_output_path,
         dockerfile_content,
         "feat: Add Dockerfile via AI Agent"
     )

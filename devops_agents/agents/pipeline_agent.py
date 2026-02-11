@@ -73,22 +73,26 @@ def set_github_secret(owner: str, repo: str, secret_name: str, secret_value: str
         return False
 
 # ============== WORKFLOW TEMPLATE ==============
-def generate_workflow_content(aws_region: str, ecr_repo_name: str, version: str) -> str:
-    """Generate GitHub Actions workflow for AWS ECR deployment with specific version tag."""
-    return f"""name: Build and Push to AWS ECR
-
-on:
-  push:
-    branches: [ "main", "master" ]
-  workflow_dispatch:
-
-env:
-  AWS_REGION: {aws_region}
-  ECR_REPOSITORY: {ecr_repo_name}
-  IMAGE_TAG: {version}
-
-jobs:
-  build-and-push:
+def generate_monorepo_workflow_content(aws_region: str, components: list, version: str) -> str:
+    """Generate GitHub Actions workflow for multiple components (Monorepo)."""
+    
+    jobs_yaml = ""
+    
+    for comp in components:
+        comp_name = comp["name"]
+        clean_comp_name = comp_name.replace("/", "-").replace(" ", "-").lower()
+        job_id = f"build-{clean_comp_name}"
+        
+        # Check deployment path context. 
+        # Standard: docker build -f path/Dockerfile .
+        dockerfile_path = "Dockerfile"
+        if comp["path"] != ".":
+            dockerfile_path = f"{comp['path']}/Dockerfile"
+            
+        ecr_repo = comp["ecr_repo"]
+        
+        jobs_yaml += f"""
+  {job_id}:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -112,10 +116,42 @@ jobs:
         id: build-image
         env:
           ECR_REGISTRY: ${{{{ steps.login-ecr.outputs.registry }}}}
+          ECR_REPOSITORY: {ecr_repo}
+          IMAGE_TAG: {version}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          # If component is in a subdirectory, use it as build context to find local package.json
+          # But we still use the Dockerfile from the root-relative path if that's where it is?
+          # Actually, usually 'docker build path/to/component' works if Dockerfile is inside.
+          
+          # Fix for monorepo: Change directory to component path for build if it's not root
+          # This ensures 'COPY package.json .' picks up the component's file, not root's.
+          
+          BUILD_CONTEXT="."
+          DOCKER_FILE="{dockerfile_path}"
+          
+          if [ "{comp['path']}" != "." ]; then
+             echo "Using component directory as build context: {comp['path']}"
+             BUILD_CONTEXT="{comp['path']}"
+             # If we moved context, Dockerfile is relative to that context? 
+             # No, -f is relative to where we run 'docker build'.
+             DOCKER_FILE="{dockerfile_path}"
+          fi
+          
+          docker build -f $DOCKER_FILE -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $BUILD_CONTEXT
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+"""
+
+    return f"""name: Build and Push (Monorepo)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: {aws_region}
+
+jobs:{jobs_yaml}
 """
 
 # ============== MAIN AGENT ==============
@@ -127,7 +163,7 @@ async def pipeline_writing_agent(state: AgentState):
     local_path = state["local_path"]
     repo_owner = state["repo_owner"]
     repo_name = state["repo_name"]
-    ecr_repo_name = project_id
+    components = state.get("components", [])
     
     send_terminal_message(project_id, "🚀 Starting CI/CD pipeline generation...\n\r")
     
@@ -139,17 +175,54 @@ async def pipeline_writing_agent(state: AgentState):
         aws_secret_access_key=settings.aws_secret_key
     )
     
-    send_terminal_message(project_id, "☁️ Setting up AWS ECR repository...\n\r")
-    ensure_ecr_repo(ecr_client, ecr_repo_name)
+    # If no components found (legacy fallback), create one from state
+    if not components:
+        send_terminal_message(project_id, "⚠️ No components detected in state, using legacy single-repo mode.\n\r")
+        components = [{
+            "name": "app",
+            "path": ".",
+            "ecr_repo": project_id
+        }]
+
+    send_terminal_message(project_id, "☁️ Setting up AWS ECR repositories...\n\r")
     
+    final_components = []
+    
+    for comp in components:
+        # Naming convention:
+        # Single Repo (path=".") -> project_id
+        # Multi Repo -> project_id-{name} (cleaned)
+        
+        if len(components) == 1 and comp["path"] == ".":
+            comp_ecr_name = project_id
+        else:
+            clean_name = comp["name"].replace("/", "-").replace(" ", "-").lower()
+            comp_ecr_name = f"{project_id}-{clean_name}"
+            
+        send_terminal_message(project_id, f"   - Ensuring ECR repo: {comp_ecr_name}\n\r")
+        ensure_ecr_repo(ecr_client, comp_ecr_name)
+        
+        try:
+            registry_uri = f"{settings.aws_account_id}.dkr.ecr.{settings.aws_region}.amazonaws.com"
+            image_url = f"{registry_uri}/{comp_ecr_name}:{build_version}"
+        except Exception:
+            image_url = "Error-Resolving-Image-URL"
+        
+        # Copy comp to dict and add extra fields used for template
+        comp_data = comp.copy()
+        comp_data["ecr_repo"] = comp_ecr_name
+        comp_data["image_url"] = image_url
+        final_components.append(comp_data)
+
     # Set GitHub secrets
     send_terminal_message(project_id, "🔐 Configuring deployment secrets...\n\r")
     set_github_secret(repo_owner, repo_name, "AWS_ACCESS_KEY_ID", settings.aws_access_key)
     set_github_secret(repo_owner, repo_name, "AWS_SECRET_ACCESS_KEY", settings.aws_secret_key)
     
-    # Generate and push workflow with version baked in
+    # Generate and push workflow
     send_terminal_message(project_id, f"📝 Generating GitHub Actions workflow (version={build_version})...\n\r")
-    workflow_content = generate_workflow_content(settings.aws_region, ecr_repo_name, build_version)
+    
+    workflow_content = generate_monorepo_workflow_content(settings.aws_region, final_components, build_version)
     
     await AsyncGitTools.write_and_push(
         local_path, 
@@ -160,11 +233,14 @@ async def pipeline_writing_agent(state: AgentState):
     
     send_terminal_message(project_id, "✅ CI/CD pipeline configured successfully!\n\r")
     
-    # Construct image URL with version tag
-    try:
-        registry_uri = f"{settings.aws_account_id}.dkr.ecr.{settings.aws_region}.amazonaws.com"
-        image_url = f"{registry_uri}/{ecr_repo_name}:{build_version}"
-    except Exception:
-        image_url = f"Error-Resolving-Image-URL"
-
-    return {"workflow_content": workflow_content, "image_url": image_url}
+    # Return updated components list to state so K8s agent can use image_urls
+    result = {
+        "workflow_content": workflow_content,
+        "components": final_components 
+    }
+    
+    # Legacy backward compatibility for single repo agents that might check image_url at root state
+    if len(final_components) == 1:
+        result["image_url"] = final_components[0]["image_url"]
+        
+    return result
