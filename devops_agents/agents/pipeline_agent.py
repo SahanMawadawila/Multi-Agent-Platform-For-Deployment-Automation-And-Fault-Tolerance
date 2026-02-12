@@ -2,6 +2,7 @@ import boto3
 import time
 import base64
 import requests
+import re
 from nacl import public
 from botocore.exceptions import ClientError, EndpointConnectionError, ConnectionClosedError
 from state import AgentState
@@ -73,6 +74,50 @@ def set_github_secret(owner: str, repo: str, secret_name: str, secret_value: str
         return False
 
 # ============== WORKFLOW TEMPLATE ==============
+def generate_standard_workflow_content(aws_region: str, ecr_repo: str, version: str) -> str:
+    """Generate GitHub Actions workflow for a standard Single Repo project."""
+    return f"""name: Build and Push
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: {aws_region}
+  ECR_REPOSITORY: {ecr_repo}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{{{ secrets.AWS_ACCESS_KEY_ID }}}}
+          aws-secret-access-key: ${{{{ secrets.AWS_SECRET_ACCESS_KEY }}}}
+          aws-region: ${{{{ env.AWS_REGION }}}}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{{{ steps.login-ecr.outputs.registry }}}}
+          IMAGE_TAG: {version}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+"""
+
 def generate_monorepo_workflow_content(aws_region: str, components: list, version: str) -> str:
     """Generate GitHub Actions workflow for multiple components (Monorepo)."""
     
@@ -80,7 +125,14 @@ def generate_monorepo_workflow_content(aws_region: str, components: list, versio
     
     for comp in components:
         comp_name = comp["name"]
-        clean_comp_name = comp_name.replace("/", "-").replace(" ", "-").lower()
+        # Sanitize name: Replace non-alphanumeric chars with '-', remove duplicate '-', strip leading/trailing '-'
+        clean_comp_name = re.sub(r'[^a-zA-Z0-9]', '-', comp_name)
+        clean_comp_name = re.sub(r'-+', '-', clean_comp_name).strip('-').lower()
+        
+        # Fallback if name becomes empty (e.g. if name was ".")
+        if not clean_comp_name:
+            clean_comp_name = "app"
+            
         job_id = f"build-{clean_comp_name}"
         
         # Check deployment path context. 
@@ -219,10 +271,19 @@ async def pipeline_writing_agent(state: AgentState):
     set_github_secret(repo_owner, repo_name, "AWS_ACCESS_KEY_ID", settings.aws_access_key)
     set_github_secret(repo_owner, repo_name, "AWS_SECRET_ACCESS_KEY", settings.aws_secret_key)
     
+    # Accept both "." and "./" as root path indicators
+    is_standard_repo = len(final_components) == 1 and final_components[0]["path"] in [".", "./"]
+    
     # Generate and push workflow
     send_terminal_message(project_id, f"📝 Generating GitHub Actions workflow (version={build_version})...\n\r")
     
-    workflow_content = generate_monorepo_workflow_content(settings.aws_region, final_components, build_version)
+    # Check if single repo or monorepo to choose template
+    is_standard_repo = len(final_components) == 1 and final_components[0]["path"] == "."
+    
+    if is_standard_repo:
+        workflow_content = generate_standard_workflow_content(settings.aws_region, final_components[0]["ecr_repo"], build_version)
+    else:
+        workflow_content = generate_monorepo_workflow_content(settings.aws_region, final_components, build_version)
     
     await AsyncGitTools.write_and_push(
         local_path, 
