@@ -17,6 +17,7 @@ DOCKERFILE_PROMPT = """You are a Docker expert. Generate a production-ready Dock
 3. If you need nodejs image, use node:{version}-alpine image format, with no any tags.
 4. Expose the correct port
 5. Use proper CMD format (JSON array)
+6. Assume the Dockerfile is placed in the project root. COPY commands should enable relative paths from the project root (e.g. "COPY package.json ."). Do NOT assume a monorepo structure where you need to copy from parent folders.
 
 ## Additional Instructions:
 - If a node project has postinstall, makesure to copy everything in the project directory before running npm install.

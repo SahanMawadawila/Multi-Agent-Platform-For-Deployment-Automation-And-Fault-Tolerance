@@ -48,7 +48,7 @@ async def monorepo_detector_agent(state: AgentState):
     # We want to see deep structure, but maybe filter out node_modules to avoid noise
     filtered_list = [
         f for f in file_list 
-        if not any(stop in f for stop in ["node_modules/", "target/", "dist/", "build/", ".git/"])
+        if not any(stop in f for stop in ["node_modules/", "target/", "dist/", "build/", ".git/", "temp/", ".venv/", "venv/", ".idea/", ".vscode/"])
         and (f.split("/")[-1] in relevant_markers or f.count("/") <= 2) # Include markers OR top-level structure
     ]
     

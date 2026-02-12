@@ -214,7 +214,7 @@ workflow.add_conditional_edges(
     "build_monitor_agent",
     check_build_status,
     {
-        "success": "success", # Stop after build for testing
+        "success": "k8s_architect_agent", # Stop after build for testing
         "continue_fix": "error_fixing_agent",
         "start_analysis": "error_analyzer_agent",
         "give_up": "failed"
