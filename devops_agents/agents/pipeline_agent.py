@@ -77,7 +77,7 @@ def set_github_secret(owner: str, repo: str, secret_name: str, secret_value: str
 def generate_standard_workflow_content(aws_region: str, ecr_repo: str, version: str) -> str:
     """Generate GitHub Actions workflow for a standard Single Repo project."""
     return f"""name: Build and Push
-
+    
 on:
   push:
     branches: [ "main", "master" ]
@@ -112,7 +112,7 @@ jobs:
         id: build-image
         env:
           ECR_REGISTRY: ${{{{ steps.login-ecr.outputs.registry }}}}
-          IMAGE_TAG: {version}
+          IMAGE_TAG: "{version}"
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
@@ -169,7 +169,7 @@ def generate_monorepo_workflow_content(aws_region: str, components: list, versio
         env:
           ECR_REGISTRY: ${{{{ steps.login-ecr.outputs.registry }}}}
           ECR_REPOSITORY: {ecr_repo}
-          IMAGE_TAG: {version}
+          IMAGE_TAG: "{version}"
         run: |
           # If component is in a subdirectory, use it as build context to find local package.json
           # But we still use the Dockerfile from the root-relative path if that's where it is?
@@ -203,7 +203,7 @@ on:
 env:
   AWS_REGION: {aws_region}
 
-jobs:{jobs_yaml}
+jobs:{{jobs_yaml}}
 """
 
 # ============== MAIN AGENT ==============
