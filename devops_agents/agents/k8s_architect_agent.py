@@ -128,10 +128,19 @@ async def k8s_architect_agent(state):
             f"--from-literal=password={settings.github_token}",
             f"--from-literal=username={settings.github_org or 'git'}"
         ]
-        subprocess.run(cmd_secret, check=True, stdout=subprocess.DEVNULL)
+        # subprocess.run(cmd_secret, check=True, stdout=subprocess.DEVNULL)
+        proc = subprocess.run(cmd_secret, capture_output=True, text=True)
+        if proc.returncode == 0:
+            print(f"kubectl stdout: {proc.stdout}")
+        else:
+            print(f"kubectl stderr: {proc.stderr}")
         
         # Label the secret so ArgoCD picks it up
-        subprocess.run(["kubectl", "label", "secret", secret_name, "-n", "argocd", "argocd.argoproj.io/secret-type=repository"], check=True, stdout=subprocess.DEVNULL)
+        proc = subprocess.run(["kubectl", "label", "secret", secret_name, "-n", "argocd", "argocd.argoproj.io/secret-type=repository"], capture_output=True, text=True)
+        if proc.returncode == 0:
+            print(f"kubectl stdout: {proc.stdout}")
+        else:
+            print(f"kubectl stderr: {proc.stderr}")
         
         send_terminal_message(project_id, "✅ ArgoCD Repository Secret created.\n\r")
 

@@ -1,5 +1,5 @@
 from langchain_core.tools import tool
-from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
+from langchain_core.messages import SystemMessage, AIMessage, HumanMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import InjectedState
 from pydantic import BaseModel, Field
@@ -178,7 +178,11 @@ def finalize_analysis(state):
                     """
         send_terminal_message(project_id, summary)
         
-        return {"analyzed_repository_details": analysis}
+        # Return analysis AND resolve the tool message
+        return {
+            "analyzed_repository_details": analysis,
+            "messages": [ToolMessage(tool_call_id=last_message.tool_calls[0]["id"], content="Analysis completed successfully.")]
+        }
         
     except Exception as e:
         send_terminal_message(project_id, f"❌ Analysis validation failed: {str(e)}\n\r")

@@ -3,6 +3,15 @@ from typing import TypedDict, List, Optional, Annotated
 from langgraph.graph.message import add_messages
 from agents.repo_analyst import RepoAnalysisOutput
 
+class MonorepoComponent(TypedDict):
+    name: str # e.g. "backend", "frontend"
+    path: str # e.g. "backend", "packages/ui" (relative to root)
+    type: str # 'node', 'spring-boot', 'unknown'
+    file_list: List[str] # sub-list of files belonging to this component
+    analysis: Optional[RepoAnalysisOutput] 
+    dockerfile_content: Optional[str]
+    image_url: Optional[str]
+
 class AgentState(TypedDict):
     project_id: str  
     build_id: str # The unique ID for this specific build/run
@@ -27,3 +36,6 @@ class AgentState(TypedDict):
     current_step_index: int
     analysis_results: Optional[str]
     start_time: Optional[float]  # time.time() when job started, for duration calc
+    components: List[MonorepoComponent] # For monorepo support
+    docker_output_path: Optional[str] # For Monorepo support (explicit Dockerfile path)
+    dockerfile_content: Optional[str] # Temp storage for Dockerfile content between nodes

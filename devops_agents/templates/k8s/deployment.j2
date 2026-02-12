@@ -24,14 +24,14 @@ spec:
           httpGet:
             path: {{ health_check_path }}
             port: {{ port }}
-          initialDelaySeconds: 30
+          initialDelaySeconds: 60
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: {{ health_check_path }}
             port: {{ port }}
-          initialDelaySeconds: 10
-          periodSeconds: 5
+          initialDelaySeconds: 60
+          periodSeconds: 15
         resources:
           limits:
             memory: "{{ memory_limit }}"

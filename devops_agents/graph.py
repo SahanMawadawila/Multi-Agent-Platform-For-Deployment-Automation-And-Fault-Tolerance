@@ -22,6 +22,18 @@ from agents.k8s_architect_agent import k8s_architect_agent
 from agents.deployment_monitor_agent import deployment_monitor_agent
 from app.kafka_build_producer import send_build_event
 
+# Monorepo Imports
+from agents.monorepo_detector_agent import monorepo_detector_agent
+from agents.monorepo_coordinator import (
+    prepare_component_analysis, 
+    save_component_analysis, 
+    check_analysis_loop,
+    prepare_docker_generation, 
+    save_docker_result, 
+    check_docker_loop,
+    check_monorepo_enabled
+)
+
 # ============== ROUTING FUNCTIONS ==============
 def check_build_status(state):
     """Route based on build status after monitoring."""
@@ -66,6 +78,15 @@ def check_plan_exists(state):
 # ============== BUILD GRAPH ==============
 workflow = StateGraph(AgentState)
 
+# Nodes - Monorepo Setup
+workflow.add_node("monorepo_detector_agent", monorepo_detector_agent)
+
+# Nodes - Coordinator
+workflow.add_node("prepare_component_analysis", prepare_component_analysis)
+workflow.add_node("save_component_analysis", save_component_analysis)
+workflow.add_node("prepare_docker_generation", prepare_docker_generation)
+workflow.add_node("save_docker_result", save_docker_result)
+
 # Nodes - Repo Analysis
 workflow.add_node("repo_analysis_agent", repo_analysis_agent)
 workflow.add_node("repo_analysis_tool", repo_analysis_tool_node)
@@ -85,7 +106,6 @@ workflow.add_node("error_fixing_agent", error_fixing_agent)
 workflow.add_node("error_fixing_tool", error_fixing_tool_node)
 workflow.add_node("finalize_fix", finalize_fix)
 
-# Nodes - K8s Architect
 # Nodes - K8s Architect
 workflow.add_node("k8s_architect_agent", k8s_architect_agent)
 workflow.add_node("deployment_monitor_agent", deployment_monitor_agent)
@@ -133,9 +153,22 @@ workflow.add_node("success", mark_deployment_success)
 workflow.add_node("failed", mark_deployment_failed)
 
 # ============== EDGES ==============
-workflow.set_entry_point("repo_analysis_agent")
+# Main Entry Point
+workflow.set_entry_point("monorepo_detector_agent")
 
-# Repo Analysis Flow
+# Monorepo -> Analysis Loop
+workflow.add_conditional_edges(
+    "monorepo_detector_agent",
+    check_monorepo_enabled,
+    {
+        "prepare_component_analysis": "prepare_component_analysis"
+    }
+)
+
+# Analysis Loop Flow
+workflow.add_edge("prepare_component_analysis", "repo_analysis_agent")
+
+# Repo Analysis standard flow
 workflow.add_conditional_edges(
     "repo_analysis_agent",
     check_analysis_finish,
@@ -147,10 +180,33 @@ workflow.add_conditional_edges(
     }
 )
 workflow.add_edge("repo_analysis_tool", "repo_analysis_agent")
-workflow.add_edge("finalize_analysis", "docker_writing_agent")
 
-# Docker & Pipeline Flow
-workflow.add_edge("docker_writing_agent", "pipeline_writing_agent")
+# Loop Back or Continue
+workflow.add_edge("finalize_analysis", "save_component_analysis")
+
+workflow.add_conditional_edges(
+    "save_component_analysis",
+    check_analysis_loop,
+    {
+        "prepare_component_analysis": "prepare_component_analysis", # Loop back
+        "docker_coordinator": "prepare_docker_generation"           # Proceed to next phase
+    }
+)
+
+# Docker Loop Flow
+workflow.add_edge("prepare_docker_generation", "docker_writing_agent")
+workflow.add_edge("docker_writing_agent", "save_docker_result")
+
+workflow.add_conditional_edges(
+    "save_docker_result",
+    check_docker_loop,
+    {
+        "prepare_docker_generation": "prepare_docker_generation", # Loop back
+        "pipeline_writing_agent": "pipeline_writing_agent"        # Proceed to Pipeline
+    }
+)
+
+# Pipeline -> Monitor
 workflow.add_edge("pipeline_writing_agent", "build_monitor_agent")
 
 # Build Monitor Routing
@@ -158,7 +214,7 @@ workflow.add_conditional_edges(
     "build_monitor_agent",
     check_build_status,
     {
-        "success": "k8s_architect_agent",
+        "success": "k8s_architect_agent", # Stop after build for testing
         "continue_fix": "error_fixing_agent",
         "start_analysis": "error_analyzer_agent",
         "give_up": "failed"
