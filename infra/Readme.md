@@ -44,7 +44,7 @@ terraform destroy -auto-approve
 ```bash
 # List load balancers
 aws elbv2 describe-load-balancers --region ap-south-1 --no-cli-pager \
-  --query "LoadBalancers[].{Name:LoadBalancerName,ARN:LoadBalancerArn}" --output table
+--query "LoadBalancers[].{Name:LoadBalancerName,ARN:LoadBalancerArn}" --output table
 
 # Delete each one
 aws elbv2 delete-load-balancer --load-balancer-arn <ARN> --region ap-south-1
@@ -53,11 +53,15 @@ aws elbv2 delete-load-balancer --load-balancer-arn <ARN> --region ap-south-1
 ### 2) `module.vpc.aws_vpc.this[0]`: Still destroying
 
 ```bash
-aws ec2 describe-security-groups \
-  --filters "Name=vpc-id,Values=<VPC_ID>" \
-  --region ap-south-1 --no-cli-pager \
-  --query "SecurityGroups[].{ID:GroupId,Name:GroupName}" --output table
+aws ec2 describe-vpcs --region ap-south-1 --no-cli-pager --query "Vpcs[].{ID:VpcId,Tags:Tags}" --output json
+
+aws ec2 describe-security-groups --filters "Name=vpc-id,Values=<VPC_ID>" --region ap-south-1 --no-cli-pager --query "SecurityGroups[].{ID:GroupId,Name:GroupName}" --output table
 
 # Delete each (don't delete default)
 aws ec2 delete-security-group --group-id <SG_ID> --region ap-south-1
+```
+
+## Added cleanup script for cleaning stucking resources in terrform
+```bash
+powershell -ExecutionPolicy Bypass -File infra/cleanup_resources.ps1
 ```
