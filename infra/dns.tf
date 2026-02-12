@@ -7,7 +7,7 @@
 # Covers ALL subdomains: argocd.domain.com, app-42.domain.com, etc.
 resource "aws_route53_record" "wildcard" {
   zone_id = var.route53_zone_id
-  name    = "*.${var.domain_name}"
+  name    = "*"
   type    = "CNAME"
   ttl     = 60
 
