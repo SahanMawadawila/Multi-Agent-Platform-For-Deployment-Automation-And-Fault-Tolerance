@@ -4,6 +4,13 @@ import asyncio
 from typing import List
 from config.settings import settings
 import shutil
+import stat
+
+
+def force_remove_readonly(func, path, exc_info):
+    """Error handler for shutil.rmtree to handle read-only files on Windows."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
 
 class AsyncGitTools:
     
@@ -17,7 +24,7 @@ class AsyncGitTools:
                     repo.remotes.origin.pull()
                     return clone_dir
                 except:
-                    shutil.rmtree(clone_dir) # If pull fails, delete and try again
+                    shutil.rmtree(clone_dir, onerror=force_remove_readonly) # If pull fails, delete and try again
 
             auth_url = repo_url.replace("https://", f"https://{settings.github_token}@")
             git.Repo.clone_from(auth_url, clone_dir)

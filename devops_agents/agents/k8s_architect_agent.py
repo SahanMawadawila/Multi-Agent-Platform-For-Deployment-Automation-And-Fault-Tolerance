@@ -1,5 +1,6 @@
 import os
 import shutil
+import stat
 import tempfile
 import asyncio
 from github import Github, Auth
@@ -151,7 +152,7 @@ async def k8s_architect_agent(state):
     # 3. Clone to Temp Dir
     temp_dir = os.path.join(os.getcwd(), "temp", f"gitops_{project_id}")
     if os.path.exists(temp_dir):
-        shutil.rmtree(temp_dir)
+        shutil.rmtree(temp_dir, onerror=lambda func, path, _: (os.chmod(path, stat.S_IWRITE), func(path)))
     
     send_terminal_message(project_id, f"📥 Cloning GitOps repo to {temp_dir}...\n\r")
     await AsyncGitTools.clone_repository(gitops_repo_url, temp_dir)
