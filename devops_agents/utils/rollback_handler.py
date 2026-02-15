@@ -4,6 +4,7 @@ Reverts the GitOps repository to a previous commit and lets ArgoCD sync.
 """
 import os
 import shutil
+import stat
 import git
 from config.settings import settings
 from app.kafka_terminal_producer import send_terminal_message
@@ -29,7 +30,7 @@ async def handle_rollback(project_id: str, build_id: str, build_version: str, gi
     # Clone GitOps repo
     temp_dir = os.path.join(os.getcwd(), "temp", f"gitops_rollback_{project_id}")
     if os.path.exists(temp_dir):
-        shutil.rmtree(temp_dir)
+        shutil.rmtree(temp_dir, onerror=lambda func, path, _: (os.chmod(path, stat.S_IWRITE), func(path)))
     
     send_terminal_message(project_id, f"📥 Cloning GitOps repo...\\n\\r")
     
@@ -75,4 +76,4 @@ async def handle_rollback(project_id: str, build_id: str, build_version: str, gi
     finally:
         # Cleanup
         if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
+            shutil.rmtree(temp_dir, onerror=lambda func, path, _: (os.chmod(path, stat.S_IWRITE), func(path)))
