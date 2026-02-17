@@ -34,13 +34,17 @@ async def database_deployment_agent(state):
     """
     Database Manifest Generator Agent.
     Uses `helm template` to render Bitnami chart YAML without deploying.
-    Writes generated YAML to temp/gitops_{project_id}/{component}-db/
     ArgoCD will deploy them alongside app manifests.
+    
+    Paths:
+      - Single project: temp/gitops_{project_id}/app/{database_type}.yaml
+      - Multi-project:  temp/gitops_{project_id}/app/{component_name}-db/{database_type}.yaml
     
     No-op if needs_database is False.
     """
     project_id = state.get("project_id", "")
     component_name = state.get("component_name")
+    is_multi_project = state.get("is_multi_project", False)
     needs_database = state.get("needs_database", False)
     database_type = state.get("database_type", "")
     
@@ -53,7 +57,11 @@ async def database_deployment_agent(state):
         send_terminal_message(project_id, f"⚠️ Unknown database type: {database_type}. Skipping.\n\r", component_name)
         return {"database_deployed": False}
     
-    release_name = f"{component_name}-db"
+    # Release name for helm template
+    if component_name:
+        release_name = f"{component_name}-db"
+    else:
+        release_name = f"app-db"
     namespace = project_id
     
     send_terminal_message(project_id, f"📦 Generating {database_type} manifests via Helm template...\n\r", component_name)
@@ -81,17 +89,22 @@ async def database_deployment_agent(state):
         
         rendered_yaml = stdout.decode()
         
-        # Write to gitops dir
-        component_folder = component_name or "app"
+        # Determine output path (same folder as component manifests):
+        #   Single:  temp/gitops_{project_id}/app/{database_type}.yaml
+        #   Multi:   temp/gitops_{project_id}/app/{component_name}/{database_type}.yaml
         gitops_base = os.path.join(os.getcwd(), "temp", f"gitops_{project_id}")
-        db_manifests_path = os.path.join(gitops_base, f"{component_folder}-db")
+        if is_multi_project and component_name:
+            db_manifests_path = os.path.join(gitops_base, "app", component_name)
+        else:
+            db_manifests_path = os.path.join(gitops_base, "app")
         os.makedirs(db_manifests_path, exist_ok=True)
         
         output_file = os.path.join(db_manifests_path, f"{database_type}.yaml")
         with open(output_file, "w") as f:
             f.write(rendered_yaml)
         
-        send_terminal_message(project_id, f"✅ Database manifests generated: {component_folder}-db/{database_type}.yaml\n\r", component_name)
+        label = f"{component_name}/{database_type}.yaml" if component_name else f"{database_type}.yaml"
+        send_terminal_message(project_id, f"✅ Database manifests generated: {label}\n\r", component_name)
         
         return {
             "database_deployed": True,

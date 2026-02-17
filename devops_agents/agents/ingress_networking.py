@@ -10,7 +10,7 @@ def generate_ingress(state):
     - Single project: uses ingress.j2 (single path rule)
     - Multi-project: uses ingress-multi.j2 (path-based routing)
     
-    Writes to temp/gitops_{project_id}/ingress.yaml
+    Writes to: temp/gitops_{project_id}/app/ingress.yaml
     """
     project_id = state.get("project_id", "")
     is_multi_project = state.get("is_multi_project", False)
@@ -22,8 +22,10 @@ def generate_ingress(state):
     templates_dir = os.path.join(os.getcwd(), "templates", "k8s")
     env = Environment(loader=FileSystemLoader(templates_dir))
     
+    # Ingress always goes to app/ingress.yaml
     gitops_base = os.path.join(os.getcwd(), "temp", f"gitops_{project_id}")
-    os.makedirs(gitops_base, exist_ok=True)
+    app_dir = os.path.join(gitops_base, "app")
+    os.makedirs(app_dir, exist_ok=True)
     
     if is_multi_project:
         send_terminal_message(project_id, "🌐 Generating shared Ingress with path-based routing...\n\r")
@@ -62,7 +64,7 @@ def generate_ingress(state):
             acm_certificate_arn=settings.acm_certificate_arn,
         )
     
-    ingress_path = os.path.join(gitops_base, "ingress.yaml")
+    ingress_path = os.path.join(app_dir, "ingress.yaml")
     with open(ingress_path, "w") as f:
         f.write(content)
     
