@@ -132,7 +132,8 @@ async def gitops_argocd_agent(state):
         send_terminal_message(project_id, f"⚠️ Failed to create K8s secret: {str(e)}\n\r")
     
     # 6. Render ArgoCD Application at root (points to app/ path)
-    templates_dir = os.path.join(os.getcwd(), "templates", "k8s")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    templates_dir = os.path.join(base_dir, "templates", "k8s")
     env = Environment(loader=FileSystemLoader(templates_dir))
     argocd_template = env.get_template("argocd-application.j2")
     

@@ -9,6 +9,8 @@ spec:
     repoURL: {{ gitops_repo_url }}
     targetRevision: HEAD
     path: app
+    directory:
+      recurse: true
   destination:
     server: https://kubernetes.default.svc
     namespace: {{ namespace }}

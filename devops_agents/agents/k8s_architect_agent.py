@@ -52,7 +52,9 @@ async def k8s_architect_agent(state):
     }
 
     # Generate Deployment + Service YAML
-    templates_dir = os.path.join(os.getcwd(), "templates", "k8s")
+    # Use absolute path to templates to avoid CWD issues in parallel execution
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    templates_dir = os.path.join(base_dir, "templates", "k8s")
     env = Environment(loader=FileSystemLoader(templates_dir))
     
     # Determine output path:

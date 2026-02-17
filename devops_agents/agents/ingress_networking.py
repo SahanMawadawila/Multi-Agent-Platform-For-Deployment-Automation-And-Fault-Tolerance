@@ -19,7 +19,9 @@ def generate_ingress(state):
     namespace = project_id
     host = f"app-{project_id}.{settings.domain_name}"
     
-    templates_dir = os.path.join(os.getcwd(), "templates", "k8s")
+    # Use absolute path to templates
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    templates_dir = os.path.join(base_dir, "templates", "k8s")
     env = Environment(loader=FileSystemLoader(templates_dir))
     
     # Ingress always goes to app/ingress.yaml
