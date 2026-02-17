@@ -124,7 +124,7 @@ async def analyze_monorepo(file_list: list, project_id: str, local_path: str) ->
         api_key=settings.openai_key,
         temperature=0
     )
-    llm_with_structure = llm.with_structured_output(MonorepoAnalysisOutput)
+    llm_with_structure = llm.with_structured_output(MonorepoAnalysisOutput, method="function_calling")
     
     file_str = "\n".join(filtered_list)
     messages = [

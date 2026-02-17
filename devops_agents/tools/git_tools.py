@@ -89,7 +89,8 @@ class AsyncGitTools:
             repo.index.add([file_path]) 
             repo.index.commit(commit_message)
             origin = repo.remote(name='origin')
-            origin.push()
+            branch = repo.active_branch.name
+            origin.push(refspec=f"{branch}:{branch}", set_upstream=True)
             return "Pushed"
 
         return await asyncio.to_thread(_push)
@@ -106,7 +107,8 @@ class AsyncGitTools:
             if repo.is_dirty() or repo.untracked_files:
                 commit = repo.index.commit(commit_message)
                 origin = repo.remote(name='origin')
-                origin.push()
+                branch = repo.active_branch.name
+                origin.push(refspec=f"{branch}:{branch}", set_upstream=True)
                 return str(commit.hexsha)
             # Return current HEAD commit if no changes
             return str(repo.head.commit.hexsha)
