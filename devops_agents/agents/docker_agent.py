@@ -88,12 +88,19 @@ async def docker_writing_agent(state: AgentState):
     
     send_terminal_message(project_id, "📝 Dockerfile generated. Pushing to repository...\n\r", component_name)
 
+    # Determine Dockerfile path — inside component folder for monorepo, root for single project
+    component_path = state.get("component_path")
+    if component_path:
+        dockerfile_path = f"{component_path}/Dockerfile"
+    else:
+        dockerfile_path = "Dockerfile"
+
     # Push to repository
     await AsyncGitTools.write_and_push(
         local_path,
-        'Dockerfile',
+        dockerfile_path,
         dockerfile_content,
-        "feat: Add Dockerfile via AI Agent"
+        f"feat: Add Dockerfile via AI Agent{' (' + component_name + ')' if component_name else ''}"
     )
     
     send_terminal_message(project_id, "✅ Dockerfile pushed successfully!\n\r", component_name)

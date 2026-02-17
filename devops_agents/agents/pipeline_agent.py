@@ -73,9 +73,18 @@ def set_github_secret(owner: str, repo: str, secret_name: str, secret_value: str
         return False
 
 # ============== WORKFLOW TEMPLATE ==============
-def generate_workflow_content(aws_region: str, ecr_repo: str, version: str, branch_name: str = None) -> str:
+def generate_workflow_content(aws_region: str, ecr_repo: str, version: str, branch_name: str = None, component_path: str = None) -> str:
     """Generate GitHub Actions workflow for building and pushing a Docker image."""
     branches = f'[ "{branch_name}" ]' if branch_name else '[ "main", "master" ]'
+    
+    # For monorepo: build context is the component folder, Dockerfile is inside it
+    if component_path:
+        build_context = f"./{component_path}"
+        dockerfile_path = f"./{component_path}/Dockerfile"
+    else:
+        build_context = "."
+        dockerfile_path = "./Dockerfile"
+    
     return f"""name: Build and Push
     
 on:
@@ -114,7 +123,7 @@ jobs:
           ECR_REGISTRY: ${{{{ steps.login-ecr.outputs.registry }}}}
           IMAGE_TAG: "{version}"
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -f {dockerfile_path} -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG {build_context}
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 """
 
@@ -162,7 +171,8 @@ async def pipeline_writing_agent(state: AgentState):
     
     # Generate and push workflow
     send_terminal_message(project_id, f"📝 Generating GitHub Actions workflow (version={build_version})...\n\r", component_name)
-    workflow_content = generate_workflow_content(settings.aws_region, ecr_repo_name, build_version, branch_name)
+    component_path = state.get("component_path")  # None for single project
+    workflow_content = generate_workflow_content(settings.aws_region, ecr_repo_name, build_version, branch_name, component_path)
 
 
     await AsyncGitTools.write_and_push(
