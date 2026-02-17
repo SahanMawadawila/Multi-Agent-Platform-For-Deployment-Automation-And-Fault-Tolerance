@@ -16,6 +16,7 @@ async def build_monitor_agent(state: AgentState):
     build_id = state.get("build_id", "")
     local_path = state["local_path"]
     token = settings.github_token
+    component_name = state.get("component_name")
     
     # Get the current commit SHA to monitor the correct build
     try:
@@ -33,7 +34,7 @@ async def build_monitor_agent(state: AgentState):
     runs_url = f"https://api.github.com/repos/{owner}/{repo}/actions/runs"
     
     print(f"🕵️ Monitoring Builds for {owner}/{repo} (SHA: {current_sha[:7] if current_sha else 'Latest'})...")
-    send_terminal_message(project_id, f"🕵️ Monitoring build status for commit {current_sha[:7] if current_sha else 'latest'}...\n\r")
+    send_terminal_message(project_id, f"🕵️ Monitoring build status for commit {current_sha[:7] if current_sha else 'latest'}...\n\r", component_name)
 
     # Poll for 5 minutes max (30 polls × 10 seconds)
     import datetime
@@ -81,13 +82,13 @@ async def build_monitor_agent(state: AgentState):
                         
                         if status == "completed":
                             if conclusion == "success":
-                                send_terminal_message(project_id, "✅ Build completed successfully!\n\r")
+                                send_terminal_message(project_id, "✅ Build completed successfully!\n\r", component_name)
                                 return {"build_status": "success"}
                             
                             if conclusion != "success": # Catch failure, cancelled, timed_out, etc.
                                 # Fetch error logs
                                 error_logs = await fetch_build_logs(session, owner, repo, run_id, headers)
-                                send_terminal_message(project_id, f"❌ Build finished with status: {conclusion}. Captured logs.\n\r")
+                                send_terminal_message(project_id, f"❌ Build finished with status: {conclusion}. Captured logs.\n\r", component_name)
                                 return {
                                     "build_status": "failed",
                                     "build_error_logs": error_logs
@@ -98,9 +99,9 @@ async def build_monitor_agent(state: AgentState):
         
         # Progress update every 30 seconds
         if (i + 1) % 3 == 0:
-            send_terminal_message(project_id, f"⏳ Still building... ({(i + 1) * 10}s elapsed)\n\r")
+            send_terminal_message(project_id, f"⏳ Still building... ({(i + 1) * 10}s elapsed)\n\r", component_name)
     
-    send_terminal_message(project_id, "⏱️ Build monitoring timed out after 5 minutes.\n\r")
+    send_terminal_message(project_id, "⏱️ Build monitoring timed out after 5 minutes.\n\r", component_name)
     return {"build_status": "timeout"}
 
 async def fetch_build_logs(session, owner: str, repo: str, run_id: int, headers: dict) -> str:

@@ -114,8 +114,9 @@ async def error_analyzer_agent(state):
     """Analyzes build errors without making changes."""
     project_id = state.get("project_id", "")
     error_logs = state.get("build_error_logs", "No logs")
+    component_name = state.get("component_name")
     
-    send_terminal_message(project_id, "🔍 Analyzing root cause of build failure...\n\r")
+    send_terminal_message(project_id, "🔍 Analyzing root cause of build failure...\n\r", component_name)
     
     llm = ChatOpenAI(model="gpt-5.1", api_key=settings.openai_key, temperature=0)
     llm_with_tools = llm.bind_tools([read_file_structure, read_file])
@@ -171,8 +172,9 @@ async def error_planner_agent(state):
     """Creates a structured plan based on analysis."""
     project_id = state.get("project_id", "")
     analysis = state.get("analysis_results", "No analysis")
+    component_name = state.get("component_name")
     
-    send_terminal_message(project_id, "📋 Creating fix plan...\n\r")
+    send_terminal_message(project_id, "📋 Creating fix plan...\n\r", component_name)
     
     llm = ChatOpenAI(model="gpt-5.1", api_key=settings.openai_key, temperature=0)
     structured_llm = llm.with_structured_output(FixPlan)
@@ -220,7 +222,8 @@ async def error_fixing_agent(state):
     current_step = plan[step_idx]
     
     if not error_fixing_messages:
-        send_terminal_message(project_id, f"🛠️ Executing Step {current_step['id']}: {current_step['task']}...\n\r")
+        component_name = state.get("component_name")
+        send_terminal_message(project_id, f"🛠️ Executing Step {current_step['id']}: {current_step['task']}...\n\r", component_name)
 
     llm = ChatOpenAI(model="gpt-5-mini", api_key=settings.openai_key, temperature=0)
     llm_with_tools = llm.bind_tools(tools)
@@ -278,7 +281,9 @@ def finalize_fix(state):
     retry_count = state.get("retry_count", 0)
     error_fixing_messages = state.get("error_fixing_messages", [])
     
-    send_terminal_message(project_id, f"✅ Step {step_idx + 1} applied. Verifying with build...\n\r")
+    component_name = state.get("component_name")
+    
+    send_terminal_message(project_id, f"✅ Step {step_idx + 1} applied. Verifying with build...\n\r", component_name)
     
     # 1. Provide ToolMessage responses for any pending tool calls (like FixComplete)
     # to satisfy OpenAI's requirement that all tool calls must have a response.

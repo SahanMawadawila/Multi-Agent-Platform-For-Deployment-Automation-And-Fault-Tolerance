@@ -3,14 +3,6 @@ from typing import TypedDict, List, Optional, Annotated
 from langgraph.graph.message import add_messages
 from agents.repo_analyst import RepoAnalysisOutput
 
-class MonorepoComponent(TypedDict):
-    name: str # e.g. "backend", "frontend"
-    path: str # e.g. "backend", "packages/ui" (relative to root)
-    type: str # 'node', 'spring-boot', 'unknown'
-    file_list: List[str] # sub-list of files belonging to this component
-    analysis: Optional[RepoAnalysisOutput] 
-    dockerfile_content: Optional[str]
-    image_url: Optional[str]
 
 class AgentState(TypedDict):
     project_id: str  
@@ -36,6 +28,25 @@ class AgentState(TypedDict):
     current_step_index: int
     analysis_results: Optional[str]
     start_time: Optional[float]  # time.time() when job started, for duration calc
-    components: List[MonorepoComponent] # For monorepo support
-    docker_output_path: Optional[str] # For Monorepo support (explicit Dockerfile path)
-    dockerfile_content: Optional[str] # Temp storage for Dockerfile content between nodes
+    component_name: Optional[str]  # Component name for multi-project repos (e.g., "frontend")
+    component_path: Optional[str]  # Component path relative to repo root (e.g., "frontend")
+    branch_name: Optional[str]  # Branch to push to (used for multi-project repos)
+    overridden_envs: Optional[dict]  # {"KEY": "value"} — env vars injected into K8s Deployment
+    needs_database: Optional[bool]  # Whether this component needs a database deployed
+    database_type: Optional[str]  # "mongodb", "postgres", "mysql"
+    role: Optional[str]  # "frontend", "backend", "worker", "api-gateway"
+    api_path_prefix: Optional[str]  # "/api", "/auth" — for Ingress path rules
+    is_multi_project: Optional[bool]  # True if repo has multiple components
+
+
+class PostProcessingState(TypedDict):
+    """State for the post-processing graph (runs once after all component graphs)."""
+    project_id: str
+    build_id: str
+    start_time: Optional[float]
+    is_multi_project: bool
+    # List of component dicts: [{name, app_name, api_path_prefix, port, health_check_path}]
+    components: list
+    gitops_commit_id: Optional[str]
+    access_url: Optional[str]
+    deployment_status: Optional[str]

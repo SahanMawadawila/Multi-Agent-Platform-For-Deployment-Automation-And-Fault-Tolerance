@@ -10,10 +10,11 @@ producer = KafkaProducer(
     value_serializer=lambda v: json.dumps(v).encode('utf-8')
 )
 
-def send_terminal_message(project_id: str, message: str):
+def send_terminal_message(project_id: str, message: str, component_name: str = None):
+    label = f"[{component_name}] " if component_name else ""
     event = {
         "project_id": project_id,
-        "message": message
+        "message": f"{label}{message}"
     }
     producer.send(KAFKA_TERMINAL_TOPIC, value=event)
     producer.flush()

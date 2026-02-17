@@ -47,8 +47,9 @@ async def docker_writing_agent(state: AgentState):
     analysis = state["analyzed_repository_details"]
     local_path = state["local_path"]
     project_id = state.get("project_id", "")
+    component_name = state.get("component_name")
     
-    send_terminal_message(project_id, "🐳 Generating Dockerfile...\n\r")
+    send_terminal_message(project_id, "🐳 Generating Dockerfile...\n\r", component_name)
     
     # Build LLM
     llm = ChatOpenAI(
@@ -85,19 +86,16 @@ async def docker_writing_agent(state: AgentState):
         lines = dockerfile_content.split("\n")
         dockerfile_content = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
     
-    # Check if a custom output path is set in the state (for Monorepo support)
-    docker_output_path = state.get("docker_output_path", "Dockerfile")
-    
-    send_terminal_message(project_id, f"📝 Dockerfile generated at {docker_output_path}. Pushing to repository...\n\r")
-    
+    send_terminal_message(project_id, "📝 Dockerfile generated. Pushing to repository...\n\r", component_name)
+
     # Push to repository
     await AsyncGitTools.write_and_push(
         local_path,
-        docker_output_path,
+        'Dockerfile',
         dockerfile_content,
         "feat: Add Dockerfile via AI Agent"
     )
     
-    send_terminal_message(project_id, "✅ Dockerfile pushed successfully!\n\r")
+    send_terminal_message(project_id, "✅ Dockerfile pushed successfully!\n\r", component_name)
     
     return {"dockerfile_content": dockerfile_content}

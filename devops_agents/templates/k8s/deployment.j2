@@ -20,6 +20,13 @@ spec:
         image: {{ image_url }}
         ports:
         - containerPort: {{ port }}
+        {% if env_vars %}
+        env:
+        {% for key, value in env_vars.items() %}
+        - name: {{ key }}
+          value: "{{ value }}"
+        {% endfor %}
+        {% endif %}
         livenessProbe:
           httpGet:
             path: {{ health_check_path }}

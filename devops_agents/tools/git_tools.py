@@ -114,6 +114,17 @@ class AsyncGitTools:
         return await asyncio.to_thread(_push)
 
     @staticmethod
+    async def create_and_checkout_branch(local_path: str, branch_name: str):
+        """Create a new branch and check it out. If it already exists, just check it out."""
+        def _branch():
+            repo = git.Repo(local_path)
+            if branch_name in repo.heads:
+                repo.heads[branch_name].checkout()
+            else:
+                repo.create_head(branch_name).checkout()
+        return await asyncio.to_thread(_branch)
+
+    @staticmethod
     async def get_latest_commit_sha(local_path: str) -> str:
         """Get the SHA of the latest commit in the repository."""
         def _get_sha():
