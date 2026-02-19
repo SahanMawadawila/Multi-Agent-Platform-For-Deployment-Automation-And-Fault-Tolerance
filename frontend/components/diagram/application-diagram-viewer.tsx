@@ -1,5 +1,5 @@
 "use client";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ReactFlow,
   Controls,
@@ -9,53 +9,16 @@ import {
   type Node,
   type Edge,
   type OnConnect,
+  Background,
 } from "reactflow";
-import { Server, Database } from "lucide-react";
+import { Server, Database, RefreshCw, AlertCircle, Box, Network } from "lucide-react";
+import { useSession } from "next-auth/react";
 
 import "reactflow/dist/style.css";
 
 import TurboNode, { type TurboNodeData } from "./turbo-node";
 import TurboEdge from "./turbo-edge";
-
-const initialNodes: Node<TurboNodeData>[] = [
-  {
-    id: "1",
-    position: { x: 0, y: 0 },
-    data: { icon: <Server size={24} /> },
-    type: "turbo",
-  },
-  {
-    id: "2",
-    position: { x: 250, y: 0 },
-    data: { icon: <Server size={24} /> },
-    type: "turbo",
-  },
-  {
-    id: "3",
-    position: { x: 500, y: 0 },
-    data: { icon: <Server size={24} /> },
-    type: "turbo",
-  },
-  {
-    id: "4",
-    data: { icon: <Database size={24} /> },
-    position: { x: 250, y: 150 },
-    type: "turbo",
-  },
-  {
-    id: "5",
-    position: { x: 750, y: 0 },
-    data: { icon: <Database size={24} /> },
-    type: "turbo",
-  },
-];
-
-const initialEdges: Edge[] = [
-  { id: "e1-2", source: "1", target: "2" },
-  { id: "e2-3", source: "2", target: "3" },
-  { id: "e2-4", source: "2", target: "4" },
-  { id: "e3-5", source: "3", target: "5" },
-];
+import { Button } from "@/components/ui/button";
 
 const nodeTypes = {
   turbo: TurboNode,
@@ -70,17 +33,184 @@ const defaultEdgeOptions = {
   markerEnd: "edge-arrow",
 };
 
-export const ApplicationDiagramViewer = () => {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+interface ApplicationDiagramViewerProps {
+  projectId?: string;
+}
+
+// Layout Algorithm
+const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
+  // Group by kind/type
+  const lbNodes = nodes.filter(n => n.id === 'load-balancer')
+  const appNodes = nodes.filter(n => n.data.group === 'app')
+  const dbNodes = nodes.filter(n => n.data.group === 'database')
+  const otherNodes = nodes.filter(n => n.data.group === 'other' || n.data.group === 'pod')
+
+  // Set X positions
+  const X_SPACING = 400
+  const Y_SPACING = 120
+
+  const layoutNode = (node: Node, index: number, levelX: number) => {
+    node.position = {
+      x: levelX,
+      y: index * Y_SPACING + 50
+    }
+    return node
+  }
+
+  const newNodes = [
+    ...lbNodes.map((n, i) => layoutNode(n, i, 0)),
+    ...appNodes.map((n, i) => layoutNode(n, i, X_SPACING)),
+    ...dbNodes.map((n, i) => layoutNode(n, i, X_SPACING * 2)),
+    ...otherNodes.map((n, i) => layoutNode(n, i, X_SPACING * 1.5)) // Place others between app and db or alongside app
+  ]
+
+  // Add any remaining nodes
+  const processedIds = new Set(newNodes.map(n => n.id));
+  const remainingNodes = nodes.filter(n => !processedIds.has(n.id));
+  remainingNodes.forEach((n, i) => {
+    n.position = { x: 0, y: (newNodes.length + i) * Y_SPACING + 50 };
+    newNodes.push(n);
+  });
+
+  return { nodes: newNodes, edges }
+}
+
+export const ApplicationDiagramViewer = ({ projectId }: ApplicationDiagramViewerProps) => {
+  const { data: session } = useSession();
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((els) => addEdge(params, els)),
     []
   );
 
+  const fetchDiagram = useCallback(async () => {
+    if (!session?.backendToken || !projectId) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/k8s/${projectId}/diagram`, {
+        headers: {
+          Authorization: `Bearer ${session.backendToken}`
+        }
+      });
+
+      if (!res.ok) {
+        if (res.status === 404) {
+          setNodes([]);
+          setEdges([]);
+          return;
+        }
+        throw new Error("Failed to fetch diagram data");
+      }
+
+      const data = await res.json();
+
+      const mappedNodes: Node[] = [];
+      const mappedEdges = (data.edges || []).map((e: any) => ({
+        ...e,
+        type: 'turbo',
+        animated: true,
+        style: { stroke: '#94a3b8' }
+      }));
+
+      // Add Load Balancer Node
+      mappedNodes.push({
+        id: 'load-balancer',
+        type: 'turbo',
+        data: {
+          icon: <Network size={20} />,
+          title: 'Gateway',
+          subline: 'Load Balancer',
+          group: 'loadbalancer'
+        },
+        position: { x: 0, y: 0 }
+      });
+
+      // Map backend data to TurboNodes
+      (data.nodes || []).forEach((n: any) => {
+        let icon = <Box size={20} />;
+        let group = 'other';
+        let title = n.data.kind || 'Resource';
+        let subline = n.data.label;
+
+        if (n.data.kind === 'Pod') {
+          const type = n.data.type;
+          if (type === 'app') {
+            icon = <Server size={20} />;
+            group = 'app';
+            title = 'Application';
+          } else if (type === 'database') {
+            icon = <Database size={20} />;
+            group = 'database';
+            title = 'Database';
+          } else {
+            icon = <Box size={20} />;
+            group = 'pod';
+          }
+          // subline should contain status for detail view
+          // n.data.status exists from backend
+          subline = `${n.data.label} (${n.data.status})`;
+        }
+
+        mappedNodes.push({
+          id: n.id,
+          type: 'turbo',
+          data: {
+            icon,
+            title,
+            subline: subline, // Passed partially for truncation in TurboNode
+            group
+          },
+          position: { x: 0, y: 0 }
+        });
+      });
+
+      // Apply layout
+      const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(mappedNodes, mappedEdges);
+
+      setNodes(layoutedNodes);
+      setEdges(layoutedEdges);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "An error occurred");
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId, session, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (session && projectId) {
+      fetchDiagram();
+    }
+  }, [session, projectId, fetchDiagram]);
+
   return (
-    <div style={{ width: "100%", height: "100%" }}>
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      {/* Overlay Header */}
+      <div className="absolute top-4 right-4 z-10 flex gap-2">
+        {error && (
+          <div className="flex items-center gap-2 bg-red-900/50 text-red-200 px-3 py-1 rounded text-xs border border-red-800">
+            <AlertCircle size={12} />
+            {error}
+          </div>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0 bg-slate-800/50 hover:bg-slate-700 border border-slate-700"
+          onClick={fetchDiagram}
+          disabled={loading}
+        >
+          <RefreshCw className={`h-4 w-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
+        </Button>
+      </div>
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -92,7 +222,8 @@ export const ApplicationDiagramViewer = () => {
         edgeTypes={edgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
       >
-        <Controls showInteractive={false} />
+        <Background color="#334155" gap={20} size={1} />
+        <Controls showInteractive={false} className="bg-slate-800 border-slate-700" />
         <svg>
           <defs>
             <linearGradient id="edge-gradient">
@@ -139,11 +270,20 @@ export const ApplicationDiagramViewer = () => {
         .react-flow__node-turbo {
           border-radius: var(--node-border-radius);
           display: flex;
-          height: 70px;
+          height: auto;
+          min-height: 70px;
+          min-width: 200px; /* Default width */
           font-family: "Fira Mono", Monospace;
           font-weight: 500;
           letter-spacing: -0.2px;
           box-shadow: var(--node-box-shadow);
+          transition: all 0.2s ease-in-out;
+        }
+        
+        /* Expand when selected */
+        .react-flow__node-turbo.selected {
+             min-width: 280px; /* Expand width */
+             border: 1px solid rgba(139, 92, 246, 0.5);
         }
 
         .react-flow__node-turbo .wrapper {
@@ -213,8 +353,7 @@ export const ApplicationDiagramViewer = () => {
 
         .react-flow__node-turbo .body {
           display: flex;
-          justify-content: center;
-          align-items: center;
+          align-items: center; 
         }
 
         .react-flow__handle {
@@ -249,31 +388,19 @@ export const ApplicationDiagramViewer = () => {
             stroke-dashoffset: -10;
           }
         }
-
-        .react-flow__controls button {
-          background-color: rgb(30, 41, 59);
-          color: var(--text-color);
-          border: 1px solid rgb(71, 85, 105);
-          border-bottom: none;
-        }
-
-        .react-flow__controls button:hover {
-          background-color: rgb(51, 65, 85);
-        }
-
-        .react-flow__controls button:first-child {
-          border-radius: 5px 5px 0 0;
-        }
-
-        .react-flow__controls button:last-child {
-          border-bottom: 1px solid rgb(71, 85, 105);
-          border-radius: 0 0 5px 5px;
-        }
-
-        .react-flow__controls button path {
-          fill: var(--text-color);
-        }
       `}</style>
+
+      {!projectId && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/50 z-20">
+          <div className="text-slate-400">Loading diagram...</div>
+        </div>
+      )}
+
+      {nodes.length === 0 && !loading && projectId && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="text-slate-500 text-sm">No active resources found in cluster</div>
+        </div>
+      )}
     </div>
   );
 };

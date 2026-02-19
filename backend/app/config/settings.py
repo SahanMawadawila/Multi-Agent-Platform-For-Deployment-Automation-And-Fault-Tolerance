@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # Kafka settings
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     KAFKA_TOPIC_AGENT_JOBS: str = "agent-jobs"
+
+    # Kubernetes settings
+    KUBECONFIG: Optional[str] = None
     
     # Security settings
     SECRET_KEY: str

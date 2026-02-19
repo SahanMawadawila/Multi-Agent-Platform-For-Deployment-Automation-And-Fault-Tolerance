@@ -126,7 +126,7 @@ export default function ProjectOverview({ project }: ProjectOverviewProps) {
                     className="h-[400px] p-0 rounded-xl border border-slate-800 bg-slate-900/50 text-slate-100 shadow-lg relative overflow-hidden"
                     data-slot="card"
                 >
-                    <ApplicationDiagramViewer />
+                    <ApplicationDiagramViewer projectId={project.project_id} />
                 </Card>
 
 
