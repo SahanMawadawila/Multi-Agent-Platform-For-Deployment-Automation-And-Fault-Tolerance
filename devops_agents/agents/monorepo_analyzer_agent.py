@@ -158,6 +158,9 @@ async def analyze_monorepo(file_list: list, project_id: str, local_path: str) ->
             "networking_env_overrides": comp.networking_env_overrides,
             "file_list": comp_files,
         })
+
+    #print components_data
+    print("networking env overrides", response.networking_env_overrides)
     
     send_terminal_message(project_id, "✅ Monorepo analysis complete.\n\r")
     return components_data

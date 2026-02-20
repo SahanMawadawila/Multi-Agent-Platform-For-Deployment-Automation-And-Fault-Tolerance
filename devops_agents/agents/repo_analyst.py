@@ -27,7 +27,7 @@ class RepoAnalysisOutput(BaseModel):
     memory_limit: str = Field("256Mi", description="Memory limit for K8s (e.g. '256Mi', '512Mi')")
     # Database detection
     needs_database: bool = Field(False, description="True if the project uses a database (detected from dependencies, env vars, or config). False if no DB is needed or DB URL points to an external managed service.")
-    database_type: str = Field("", description="Database type if needs_database: 'mongodb', 'postgres', 'mysql'. Empty if not needed.")
+    database_type: str = Field("", description="Database type if needs_database: 'mongodb', 'postgresql', 'mysql'. Empty if not needed.")
     database_env_overrides: Dict[str, str] = Field(default_factory=dict, description="Env var overrides for database connection. Key=env var name (e.g. MONGODB_URI), Value=K8s service connection string. Leave empty if needs_database is False.")
 
 # ============== TOOL ==============
@@ -121,7 +121,7 @@ Read env files (.env, .env.example) and package.json/pom.xml dependencies to det
 - Frontend-only project
 
 ### database_type:
-- Detect from connection string protocol or package: mongodb, postgres, mysql
+- Detect from connection string protocol or package: mongodb, postgresql, mysql
 
 ### database_env_overrides:
 If needs_database is TRUE, compute the K8s internal connection string for each database env var.
