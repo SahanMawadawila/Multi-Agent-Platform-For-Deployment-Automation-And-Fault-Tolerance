@@ -28,12 +28,13 @@ spec:
           value: appdb
         volumeMounts:
         - name: data
-          mountPath: /var/lib/postgresql/data
+          mountPath: /var/lib/postgresql
   volumeClaimTemplates:
   - metadata:
       name: data
     spec:
       accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "gp2"
       resources:
         requests:
           storage: 1Gi
@@ -47,6 +48,5 @@ spec:
   ports:
   - port: 5432
     targetPort: 5432
-  clusterIP: None
   selector:
     app: {{ service_name }}

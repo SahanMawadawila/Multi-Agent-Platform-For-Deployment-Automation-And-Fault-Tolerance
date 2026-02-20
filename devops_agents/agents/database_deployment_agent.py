@@ -41,10 +41,16 @@ async def database_deployment_agent(state):
         return {"database_deployed": False}
     
     # Determine release name and namespace
-    if component_name:
-        service_name = f"{component_name}-db-{database_type}"
+    # Normalize suffixes to match repo_analyst.py connection strings
+    if database_type == "postgres":
+        db_suffix = "postgresql"
     else:
-        service_name = f"app-db-{database_type}"
+        db_suffix = database_type
+
+    if component_name:
+        service_name = f"{component_name}-db-{db_suffix}"
+    else:
+        service_name = f"app-db-{db_suffix}"
     namespace = project_id
     
     send_terminal_message(project_id, f"📦 Generating {database_type} manifests via Jinja2...\n\r", component_name)

@@ -20,6 +20,10 @@ module "eks" {
 
   # Cluster addons - managed by AWS
   cluster_addons = {
+    aws-ebs-csi-driver = {
+      most_recent              = true
+      service_account_role_arn = module.ebs_csi_irsa_role.iam_role_arn
+    }
     coredns = {
       most_recent = true
       configuration_values = jsonencode({
