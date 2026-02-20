@@ -128,12 +128,12 @@ If needs_database is TRUE, compute the K8s internal connection string for each d
 The component_name is provided in the initial message. Use it to construct the service name.
 
 Format: `{component_name}-db-{db_suffix}` where db_suffix is: mongodb, postgresql, or mysql
-Default credentials: root/agentDbPass123, database name = component_name (with hyphens replaced by underscores)
+Default credentials: postgres/agentDbPass123 (PostgreSQL), root/agentDbPass123 (MongoDB, MySQL). Database name is always "appdb".
 
 Examples:
-- MongoDB: `{"MONGODB_URI": "mongodb://root:agentDbPass123@{component_name}-db-mongodb:27017/{db_name}?authSource=admin"}`
-- PostgreSQL: `{"DATABASE_URL": "postgresql://postgres:agentDbPass123@{component_name}-db-postgresql:5432/{db_name}"}`
-- MySQL: `{"DATABASE_URL": "mysql://root:agentDbPass123@{component_name}-db-mysql:3306/{db_name}"}`
+- MongoDB: `{"MONGODB_URI": "mongodb://root:agentDbPass123@{component_name}-db-mongodb:27017/appdb?authSource=admin"}`
+- PostgreSQL: `{"DATABASE_URL": "postgresql://postgres:agentDbPass123@{component_name}-db-postgresql:5432/appdb"}`
+- MySQL: `{"DATABASE_URL": "mysql://root:agentDbPass123@{component_name}-db-mysql:3306/appdb"}`
 
 If needs_database is FALSE, leave database_env_overrides empty.
 
@@ -171,8 +171,8 @@ async def repo_analysis_agent(state):
         else:
             file_list_str = "\n".join(f"- {f}" for f in file_list)
             
-        component_name = state.get("component_name", project_id)
-        component_context = f"\nComponent name: {component_name}\n" if component_name else ""
+        component_name = state.get("component_name") or "app"
+        component_context = f"\nComponent name: {component_name}\n"
         initial_human_message = HumanMessage(content=f"Analyze this repository.{component_context}Here are the files:\n\n{file_list_str}")
         llm_messages = [
             SystemMessage(content=SYSTEM_PROMPT),
@@ -216,9 +216,42 @@ def finalize_analysis(state):
                    f"📝 Package Manager: {analysis.package_manager}{db_info}\n\r")
         send_terminal_message(project_id, summary, component_name)
         
+        # Deterministically build DB env overrides to match the K8s service name
+        # that database_deployment_agent will create.
+        # This ensures correct env vars are ALWAYS injected, regardless of LLM output.
+        db_overrides = dict(analysis.database_env_overrides)
+        if analysis.needs_database:
+            db_suffix = "postgresql" if analysis.database_type in ("postgres", "postgresql") else analysis.database_type
+            db_host = f"{component_name}-db-{db_suffix}" if component_name else f"app-db-{db_suffix}"
+            
+            # Standard env vars per database type — covers all common patterns
+            standard_overrides = {}
+            if analysis.database_type in ("postgres", "postgresql"):
+                standard_overrides = {
+                    "DATABASE_URL": f"postgresql://postgres:agentDbPass123@{db_host}:5432/appdb",
+                    "DB_HOST": db_host, "DB_PORT": "5432",
+                    "DB_USER": "postgres", "DB_PASSWORD": "agentDbPass123", "DB_NAME": "appdb",
+                    "PGHOST": db_host, "PGPORT": "5432",
+                    "PGUSER": "postgres", "PGPASSWORD": "agentDbPass123", "PGDATABASE": "appdb",
+                }
+            elif analysis.database_type == "mongodb":
+                standard_overrides = {
+                    "MONGODB_URI": f"mongodb://root:agentDbPass123@{db_host}:27017/appdb?authSource=admin",
+                    "MONGO_URL": f"mongodb://root:agentDbPass123@{db_host}:27017/appdb?authSource=admin",
+                    "DB_HOST": db_host, "DB_PORT": "27017",
+                }
+            elif analysis.database_type == "mysql":
+                standard_overrides = {
+                    "DATABASE_URL": f"mysql://root:agentDbPass123@{db_host}:3306/appdb",
+                    "DB_HOST": db_host, "DB_PORT": "3306",
+                    "DB_USER": "root", "DB_PASSWORD": "agentDbPass123", "DB_NAME": "appdb",
+                }
+            # Standard first, then LLM overrides on top (LLM knows app-specific var names)
+            db_overrides = {**standard_overrides, **db_overrides}
+
         # Merge database_env_overrides with existing overridden_envs from state
         existing_overrides = state.get("overridden_envs") or {}
-        merged_overrides = {**existing_overrides, **analysis.database_env_overrides}
+        merged_overrides = {**existing_overrides, **db_overrides}
         
         # Return analysis, DB state fields, merged env overrides, AND resolve the tool message
         return {
