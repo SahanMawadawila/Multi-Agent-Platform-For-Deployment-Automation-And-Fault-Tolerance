@@ -33,7 +33,7 @@ class AgentState(TypedDict):
     branch_name: Optional[str]  # Branch to push to (used for multi-project repos)
     overridden_envs: Optional[dict]  # {"KEY": "value"} — env vars injected into K8s Deployment
     needs_database: Optional[bool]  # Whether this component needs a database deployed
-    database_type: Optional[str]  # "mongodb", "postgres", "mysql"
+    database_type: Optional[str]  # "mongodb", "postgresql", "mysql"
     role: Optional[str]  # "frontend", "backend", "worker", "api-gateway"
     api_path_prefix: Optional[str]  # "/api", "/auth" — for Ingress path rules
     is_multi_project: Optional[bool]  # True if repo has multiple components
