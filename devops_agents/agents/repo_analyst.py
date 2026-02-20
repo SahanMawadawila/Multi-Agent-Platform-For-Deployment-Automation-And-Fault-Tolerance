@@ -207,14 +207,13 @@ def finalize_analysis(state):
         analysis = RepoAnalysisOutput(**output_args)
         
         # Send summary to frontend
-        db_info = f"\n                    🗄️ Database: {analysis.database_type}" if analysis.needs_database else ""
-        summary = f"""✅ Repository Analysis Complete
-                    📦 Project Type: {analysis.project_type}
-                    🔧 Framework: {analysis.framework or 'N/A'}
-                    📌 Version: {analysis.version}
-                    🚀 Port: {analysis.port}
-                    📝 Package Manager: {analysis.package_manager}{db_info}
-                    """
+        db_info = f"\n\r🗄️ Database: {analysis.database_type}" if analysis.needs_database else ""
+        summary = (f"✅ Repository Analysis Complete\n\r"
+                   f"📦 Project Type: {analysis.project_type}\n\r"
+                   f"🔧 Framework: {analysis.framework or 'N/A'}\n\r"
+                   f"📌 Version: {analysis.version}\n\r"
+                   f"🚀 Port: {analysis.port}\n\r"
+                   f"📝 Package Manager: {analysis.package_manager}{db_info}\n\r")
         send_terminal_message(project_id, summary, component_name)
         
         # Merge database_env_overrides with existing overridden_envs from state
