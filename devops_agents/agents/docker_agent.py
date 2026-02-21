@@ -35,8 +35,6 @@ DOCKERFILE_PROMPT = """You are a Docker expert. Generate a production-ready Dock
 - Port: {port}
 - Has Lockfile: {has_lockfile}
 - Needs Build Step: {needs_build_step}
-- Environment Variables: {env_variables}
-
 ## Response:
 Return ONLY the Dockerfile content. No markdown, no explanations.
 """
@@ -68,8 +66,7 @@ async def docker_writing_agent(state: AgentState):
         run_command=analysis.run_command,
         port=analysis.port,
         has_lockfile=analysis.has_lockfile,
-        needs_build_step=getattr(analysis, 'needs_build_step', False),
-        env_variables=", ".join(analysis.env_variables) if analysis.env_variables else "None"
+        needs_build_step=getattr(analysis, 'needs_build_step', False)
     )
     
     # Generate Dockerfile

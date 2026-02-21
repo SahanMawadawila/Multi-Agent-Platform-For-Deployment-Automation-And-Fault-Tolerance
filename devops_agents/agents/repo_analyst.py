@@ -10,6 +10,13 @@ from typing import Annotated, Optional, List, Dict
 from langgraph.prebuilt import ToolNode
 
 # ============== SCHEMA ==============
+class DatabaseCredentials(BaseModel):
+    """Extracted database credentials if found in the repository configuration."""
+    db_user: str = Field("", description="Username for the database connection. Empty string if not found.")
+    db_password: str = Field("", description="Password for the database connection. Empty string if not found.")
+    db_name: str = Field("", description="Name of the database. Empty string if not found.")
+    db_root_password: str = Field("", description="Root password for the database if explicitly specified. Empty string if not found.")
+
 class RepoAnalysisOutput(BaseModel):
     """Structured output from repository analysis for Dockerfile generation and database deployment."""
     project_type: str = Field(..., description="Project type: 'node' or 'springboot'")
@@ -18,7 +25,7 @@ class RepoAnalysisOutput(BaseModel):
     build_command: str = Field("", description="Build command (e.g. 'npm run build', 'mvn clean package'). Empty if no build needed.")
     run_command: str = Field(..., description="Start command (e.g. 'npm start', 'java -jar app.jar')")
     port: int = Field(..., description="Application port (e.g. 3000, 8080)")
-    env_variables: List[str] = Field(default_factory=list, description="Required environment variable keys")
+    env_variables: List[str] = Field(default_factory=list, description="All environment variables in the application exactly as they appear in the `.env` files or default configurations. Format: ['KEY=VALUE', 'KEY2=VALUE2']")
     has_lockfile: bool = Field(False, description="Whether a lockfile exists (package-lock.json, yarn.lock, etc.)")
     framework: Optional[str] = Field(None, description="Detected framework: next, nest, express, spring-boot, etc.")
     needs_build_step: bool = Field(False, description="True if build step creates output (TypeScript, Next.js, NestJS). False for plain JS apps that run directly.")
@@ -28,7 +35,8 @@ class RepoAnalysisOutput(BaseModel):
     # Database detection
     needs_database: bool = Field(False, description="True if the project uses a database (detected from dependencies, env vars, or config). False if no DB is needed or DB URL points to an external managed service.")
     database_type: str = Field("", description="Database type if needs_database: 'mongodb', 'postgresql', 'mysql'. Empty if not needed.")
-    database_env_overrides: Dict[str, str] = Field(default_factory=dict, description="Env var overrides for database connection. Key=env var name (e.g. MONGODB_URI), Value=K8s service connection string. Leave empty if needs_database is False.")
+    database_env_variables: List[str] = Field(default_factory=list, description="Environment variables read from .env file used for database configurations. Format: ['KEY=VALUE']")
+    database_credentials: DatabaseCredentials = Field(default_factory=DatabaseCredentials, description="Explicitly extracted database credentials (username, password, db name).")
 
 # ============== TOOL ==============
 @tool
@@ -59,15 +67,16 @@ tools = [read_file, RepoAnalysisOutput]
 # ============== AGENT ==============
 SYSTEM_PROMPT = """You are a DevOps expert analyzing a repository to generate a Dockerfile and detect database requirements.
 
-Your task:
+## Steps to follow:
 1. Look at the file_list provided to understand what files exist in the repository.
-2. Use the read_file tool to read relevant configuration files.
+2. Use the read_file tool to read relevant configuration files, ESPECIALLY any `.env`, `.env.example`, or `.env.local` files to find environment variables.
 3. Extract the information needed for Dockerfile generation.
 4. Detect database requirements and compute database env overrides.
 5. Call the RepoAnalysisOutput tool with your findings.
 
 ## For Node.js Projects (package.json exists):
-- Read: package.json, tsconfig.json (if exists), .env.example or .env (if exists)
+- Read: package.json, tsconfig.json (if exists)
+- YOU MUST READ: `.env` or `.env.example` (if they exist in the file list)
 - Check if lockfiles exist in the provided file list (e.g., package-lock.json, yarn.lock). DO NOT read lockfiles using the read_file tool as they are too large.
 - Detect framework from dependencies: next, nest, express
 - Extract: version (from engines or default to 18), scripts (build, start), port
@@ -92,23 +101,24 @@ Look at the "build" script in package.json:
 - If scripts.start exists, use "npm start"
 
 ## For Spring Boot Projects (pom.xml or build.gradle exists):
-- Read: pom.xml or build.gradle
-- Read: src/main/resources/application.properties or application.yml (if exists)
-- Extract: Java version, build command, port (server.port)
+- Read: pom.xml/build.gradle, src/main/resources/application.properties, src/main/resources/application.yml (if they exist)
+- YOU MUST READ: `.env` or `.env.example` (if they exist in the file list)
+- Extract: Java version, build tool (maven/gradle), port (from properties/yml, default 8080)
 - needs_build_step is always TRUE for Spring Boot
 
 ## INTELLIGENCE RULES (Resources & Health):
-1. **Health Check Path**:
-   - Spring Boot: default to `/actuator/health` or `/health`
-   - Node/Express: Look for `app.get('/health')` or use `/`
-   - Next.js: use `/`
+1. **Health Check Path (CRITICAL FOR K8s LIVENESS PROBES)**:
+   - You MUST NOT guess or assume this route. A wrong guess will cause the pod to crash infinitely.
+   - For Node/Express/NestJS: You MUST read the main server file (e.g. `src/index.js`, `main.ts`, `app.js`) to discover the exact route defined. Look for strings like `.get('/health'`, `.get('/api/liveness'`, etc.
+   - For Spring Boot: Default to `/actuator/health`. If you see a custom `HealthController`, use its exact route.
+   - Do NOT assume the route starts with `/api` unless you explicitly see it in the code. Output the exact, fully qualified relative route. Only fallback to `/` if absolutely no routes are found.
 2. **Resources (CPU/Memory)**:
    - **Java/Spring Boot**: logic heavy. Set memory="512Mi", cpu="500m"
    - **Node.js**: lightweight. Set memory="256Mi", cpu="200m"
    - **NestJS**: moderate. Set memory="384Mi", cpu="300m"
 
-## DATABASE DETECTION:
-Read env files (.env, .env.example) and package.json/pom.xml dependencies to detect database usage.
+## DATABASE DETECTION & ENVIRONMENT VARIABLES (CRITICAL):
+You MUST actively use the `read_file` tool to inspect `.env`, `.env.example`, or `.env.local` if they appear in the file list. If you do not read these files, you will fail to extract the required environment variables.
 
 ### When needs_database = TRUE:
 - Dependencies include: mongoose, mongodb, pg, mysql2, typeorm, prisma, sequelize, spring-data-mongodb, spring-data-jpa
@@ -123,21 +133,28 @@ Read env files (.env, .env.example) and package.json/pom.xml dependencies to det
 ### database_type:
 - Detect from connection string protocol or package: mongodb, postgresql, mysql
 
-### database_env_overrides:
-If needs_database is TRUE, compute the K8s internal connection string for each database env var.
-The component_name is provided in the initial message. Use it to construct the service name.
+### database_env_variables:
+If needs_database is TRUE, extract the database environment variables *exactly* as they appear in the `.env` files. 
 
-Format: `{component_name}-db-{db_suffix}` where db_suffix is: mongodb, postgresql, or mysql
-Default credentials: root/agentDbPass123, database name = component_name (with hyphens replaced by underscores)
-
+CRITICAL: You must format this as a JSON list of strings (e.g. `["KEY=value"]`). 
 Examples:
-- MongoDB: `{"MONGODB_URI": "mongodb://root:agentDbPass123@{component_name}-db-mongodb:27017/{db_name}?authSource=admin"}`
-- PostgreSQL: `{"DATABASE_URL": "postgresql://postgres:agentDbPass123@{component_name}-db-postgresql:5432/{db_name}"}`
-- MySQL: `{"DATABASE_URL": "mysql://root:agentDbPass123@{component_name}-db-mysql:3306/{db_name}"}`
+- `["MONGODB_URI=mongodb://localhost:27017/mydb", "DB_NAME=mydb"]`
+- `["DB_HOST=localhost", "DB_USER=root", "DB_PASS=pass"]`
 
-If needs_database is FALSE, leave database_env_overrides empty.
+If needs_database is FALSE, leave database_env_variables empty.
 
-## Rules:
+### database_credentials:
+If needs_database is TRUE, you must also deeply analyze the `database_env_variables` you just extracted.
+Extract the exact username, password, database name, and root password (if applicable) and place them into the `database_credentials` object.
+If a specific credential (like `db_user` or `db_password`) is NOT specified in the `.env` files, you MUST return a blank string `""` for that field. Do not guess or make up passwords here.
+
+### env_variables:
+Extract ALL OTHER environment variables found in the application's `.env` files or configurations (e.g. `PORT`, `JWT_SECRET`, `API_KEY`).
+CRITICAL: You must format this as a JSON list of strings (e.g. `["KEY=value"]`).
+Examples:
+- `["PORT=3000", "JWT_SECRET=mysecret123"]`
+
+## Rules
 - If you cannot find information, use sensible defaults
 - Always call RepoAnalysisOutput at the end with your analysis
 - Be concise in tool usage - only read files that are necessary
@@ -156,9 +173,8 @@ async def repo_analysis_agent(state):
     
     # Build the LLM
     llm = ChatOpenAI(
-        model="gpt-5-mini",
+        model="o4-mini",
         api_key=settings.openai_key,
-        temperature=0
     )
     llm_with_tools = llm.bind_tools(tools)
     
@@ -217,18 +233,38 @@ def finalize_analysis(state):
                     """
         send_terminal_message(project_id, summary, component_name)
         
-        # Merge database_env_overrides with existing overridden_envs from state
+        # Replace localhost/127.0.0.1 with the dynamic K8s database service name
+        computed_db_overrides = {}
+        if analysis.needs_database and analysis.database_env_variables:
+            # Construct the dynamic K8s service name that the database will be deployed as
+            service_name_prefix = f"{component_name}-" if component_name else "app-"
+            db_service_name = f"{service_name_prefix}db-{analysis.database_type}"
+            
+            for item in analysis.database_env_variables:
+                if "=" in item:
+                    key, val = item.split("=", 1)
+                    key = key.strip()
+                    val = val.strip()
+                    # Replace local hosts with the K8s service name
+                    new_val = val.replace("localhost", db_service_name).replace("127.0.0.1", db_service_name)
+                    computed_db_overrides[key] = new_val
+        
+        #existing overrides means 
         existing_overrides = state.get("overridden_envs") or {}
-        merged_overrides = {**existing_overrides, **analysis.database_env_overrides}
+        merged_overrides = {**existing_overrides, **computed_db_overrides}
 
-        #print database_env_overrides
-        print("database env overrides", analysis.database_env_overrides)
+        print("--- ENV VARIABLE EXTRACTION ---", flush=True)
+        print("database env overrides (raw from LLM):", analysis.database_env_variables, flush=True)
+        print("database env overrides (modified for K8s):", computed_db_overrides, flush=True)
+        print("all other env variables (raw from LLM):", analysis.env_variables, flush=True)
+        print("-------------------------------", flush=True)
         
         # Return analysis, DB state fields, merged env overrides, AND resolve the tool message
         return {
             "analyzed_repository_details": analysis,
             "needs_database": analysis.needs_database,
             "database_type": analysis.database_type,
+            "database_credentials": analysis.database_credentials.model_dump(),
             "overridden_envs": merged_overrides,
             "messages": [ToolMessage(tool_call_id=last_message.tool_calls[0]["id"], content="Analysis completed successfully.")]
         }

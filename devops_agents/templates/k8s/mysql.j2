@@ -21,9 +21,9 @@ spec:
         - containerPort: 3306
         env:
         - name: MYSQL_ROOT_PASSWORD
-          value: agentDbPass123
+          value: {{ db_root_password | default(db_password, true) }}
         - name: MYSQL_DATABASE
-          value: appdb
+          value: {{ db_name }}
         volumeMounts:
         - name: data
           mountPath: /var/lib/mysql

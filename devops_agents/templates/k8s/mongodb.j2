@@ -21,9 +21,9 @@ spec:
         - containerPort: 27017
         env:
         - name: MONGO_INITDB_ROOT_USERNAME
-          value: root
+          value: {{ db_user | default('root', true) }}
         - name: MONGO_INITDB_ROOT_PASSWORD
-          value: agentDbPass123
+          value: {{ db_root_password | default(db_password, true) }}
         volumeMounts:
         - name: data
           mountPath: /data/db

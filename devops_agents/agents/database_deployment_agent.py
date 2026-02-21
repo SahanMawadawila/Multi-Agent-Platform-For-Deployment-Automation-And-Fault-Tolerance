@@ -1,6 +1,8 @@
 import os
 import asyncio
 from jinja2 import Environment, FileSystemLoader
+import string
+import secrets
 from config.settings import settings
 from app.kafka_terminal_producer import send_terminal_message
 
@@ -48,6 +50,13 @@ async def database_deployment_agent(state):
     
     send_terminal_message(project_id, f"📦 Generating {database_type} manifests via Jinja2...\n\r", component_name)
     
+    # Process extracted Database Credentials, fallback to random secure passwords
+    db_creds = state.get("database_credentials") or {}
+    db_user = db_creds.get("db_user") or "admin"
+    db_password = db_creds.get("db_password") or "".join(secrets.choice(string.ascii_letters + string.digits) for i in range(16))
+    db_name = db_creds.get("db_name") or "appdb"
+    db_root_password = db_creds.get("db_root_password") or "".join(secrets.choice(string.ascii_letters + string.digits) for i in range(16))
+
     try:
         # Use absolute path to templates to avoid CWD issues
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -57,7 +66,11 @@ async def database_deployment_agent(state):
         template = env.get_template(template_file)
         content = template.render(
             service_name=service_name,
-            namespace=namespace
+            namespace=namespace,
+            db_user=db_user,
+            db_password=db_password,
+            db_name=db_name,
+            db_root_password=db_root_password
         )
         
         # Determine output path (same folder as component manifests):
