@@ -187,7 +187,7 @@ async def consume():
             job = message.value
             print(f"📥 Received Job: {job}")
             project_id = job.get("project_id")
-            send_terminal_message(project_id, "Handover the deployment to the devops agentic framework")
+            send_terminal_message(project_id, "🤖 DevOps agents received the job. Starting pipeline...\n\r")
             asyncio.create_task(process_job(job))
     finally:
         await consumer.stop()
