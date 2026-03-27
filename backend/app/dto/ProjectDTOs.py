@@ -23,7 +23,7 @@ class UserProjectDetailOutDTO(BaseModel):
     domain_name: Optional[str] = None
     status: Optional[str] = None
     topology_info: Optional[dict] = None
-    env_vars: Optional[Dict[str, str]] = None
+    env_vars: Optional[Dict] = None
     project_access_url: Optional[str] = None
 
     class Config:
@@ -34,7 +34,7 @@ class UserProjectDetailOutDTO(BaseModel):
 class ProjectCreateInDTO(BaseModel):
     project_name: str
     repository_url: str
-    env_vars: Optional[Dict[str, str]] = None
+    env_vars: Optional[Dict] = None
     trigger_deployment: Optional[bool] = False
 
 

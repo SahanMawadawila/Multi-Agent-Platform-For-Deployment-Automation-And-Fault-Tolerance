@@ -395,3 +395,96 @@ async def github_webhook_push(
         "commit": commit_id[:8],
         "projects": [str(p.project_id) for p in verified_projects]
     }
+
+
+
+@router.get("/analyze-repo/")
+async def analyze_repo(
+    repo_url: str,
+    db: AsyncSession = Depends(get_db), 
+    user: dict = Depends(get_current_user)
+):
+    print("Analyzing repo:", repo_url)
+    
+    result = await db.execute(
+        select(OauthToken)
+        .where(OauthToken.user_id == int(user["id"]))
+        .where(OauthToken.provider == "github")
+    )
+    oauth_token = result.scalars().first()
+    
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if oauth_token and oauth_token.access_token:
+        headers["Authorization"] = f"Bearer {oauth_token.access_token}"
+    else:
+        system_token = os.getenv("GITHUB_TOKEN")
+        if system_token:
+            headers["Authorization"] = f"Bearer {system_token}"
+
+
+    def get_owner_repo(raw_url: str):
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(raw_url)
+            if "github.com" in p.netloc:
+                segs = [s for s in p.path.split("/") if s]
+                if len(segs) >= 2:
+                    repo = segs[1]
+                    if repo.endswith(".git"):
+                        repo = repo[:-4]
+                    return segs[0], repo
+            if "/" in raw_url and not raw_url.startswith("http"):
+                segs = raw_url.strip("/").split("/")
+                return segs[0], segs[1]
+        except:
+            pass
+        return None, None
+
+    repo_info = get_owner_repo(repo_url)
+    if not repo_info[0]:
+        return {"components": [{"name": "root", "path": "."}]}
+        
+    owner, repo = repo_info
+    
+    # Check default branch
+    repo_api_url = f"https://api.github.com/repos/{owner}/{repo}"
+    repo_resp = requests.get(repo_api_url, headers=headers)
+    if repo_resp.status_code != 200:
+        return {"components": [{"name": "root", "path": "."}]}
+        
+    default_branch = repo_resp.json().get("default_branch", "main")
+    
+    # Get file tree
+    tree_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1"
+    tree_resp = requests.get(tree_url, headers=headers)
+    if tree_resp.status_code != 200:
+         return {"components": [{"name": "root", "path": "."}]}
+         
+    tree_files = tree_resp.json().get("tree", [])
+    markers = {"package.json", "pom.xml", "build.gradle", "requirements.txt", "pyproject.toml", "Dockerfile", "go.mod"}
+    
+    components = []
+    
+    for item in tree_files:
+        if item["type"] == "blob":
+            path = item["path"]
+            parts = path.split("/")
+            if any(p.startswith(".") or p in ["node_modules", "target", "dist", "build", "venv"] for p in parts):
+                continue
+                
+            filename = parts[-1]
+            if filename in markers:
+                dir_path = "/".join(parts[:-1]) if len(parts) > 1 else "."
+                
+                if dir_path != ".":
+                    name = parts[-2]
+                    if not any(c["path"] == dir_path for c in components):
+                        components.append({
+                            "name": name,
+                            "path": dir_path
+                        })
+                        
+    if not components:
+        return {"components": [{"name": "root", "path": "."}]}
+        
+    return {"components": components}
