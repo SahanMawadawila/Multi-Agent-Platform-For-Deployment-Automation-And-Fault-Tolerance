@@ -29,6 +29,37 @@ export default function CreateNewProjectForm() {
   const [envVars, setEnvVars] = useState<EnvVar[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [components, setComponents] = useState<{name: string, path: string}[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [envVarsMap, setEnvVarsMap] = useState<Record<string, EnvVar[]>>({});
+
+
+  
+  const analyzeRepo = async (url: string) => {
+    setIsAnalyzing(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/github/analyze-repo/?repo_url=${encodeURIComponent(url)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session?.backendToken}`,
+          },
+        }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (data.components && data.components.length > 0) {
+          setComponents(data.components);
+        } else {
+        }
+      } else {
+      }
+    } catch (err) {
+      console.error("Analysis failed:", err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   // Simulate backend check for repo access
   const checkRepoAccess = async (url: string) => {
@@ -48,6 +79,11 @@ export default function CreateNewProjectForm() {
       }
 
       const data = await response.json();
+      
+      // Since your GitHub repos are always accessible to the project (even if the API says otherwise),
+      // we will always trigger analyzeRepo here regardless of the strict public/private accessible boolean
+      analyzeRepo(url);
+
       if (data.is_accessible === true) {
         setRepoStatus("success");
       } else if (data.is_private === true) {
@@ -66,7 +102,6 @@ export default function CreateNewProjectForm() {
   };
 
   const RequestRepoAccess = async () => {
-    console.log("Requesting repo access...");
     try {
       // Step 1: Get repo access URL from backend
       const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/github/get-access-request-url/`, {
@@ -91,6 +126,7 @@ export default function CreateNewProjectForm() {
   const handleRepoBlur = () => {
     if (repoUrl && repoUrl.startsWith("https://github.com")) {
       checkRepoAccess(repoUrl);
+    } else {
     }
   };
 
@@ -107,13 +143,27 @@ export default function CreateNewProjectForm() {
     }
 
     try {
-      // Convert envVars array to object: [{key, value}] -> {key: value}
-      const envVariables: Record<string, string> = {};
-      envVars.forEach((env) => {
-        if (env.key.trim()) {
-          envVariables[env.key.trim()] = env.value;
-        }
-      });
+      // Convert envVars array/map
+      let envVariables: any = {};
+      if (components.length > 1) {
+          // Monorepo mode
+          components.forEach(c => {
+             const compVars: Record<string, string> = {};
+             (envVarsMap[c.path] || []).forEach(env => {
+                 if (env.key.trim()) compVars[env.key.trim()] = env.value;
+             });
+             if (Object.keys(compVars).length > 0) {
+                 envVariables[c.path] = compVars;
+             }
+          });
+      } else {
+          // Single mode
+          envVars.forEach((env) => {
+            if (env.key.trim()) {
+              envVariables[env.key.trim()] = env.value;
+            }
+          });
+      }
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/`,
@@ -206,7 +256,37 @@ export default function CreateNewProjectForm() {
       </div>
 
       {/* EnvFileEditor section */}
-      <EnvFileEditor value={envVars} onChange={setEnvVars} />
+      {isAnalyzing && (
+        <div className="flex items-center gap-3 text-violet-400 p-4 border border-violet-900/50 bg-violet-900/10 rounded-lg animate-pulse">
+           <Zap className="animate-spin" size={24} />
+           <div>
+             <div className="font-semibold">Analyzing repository structure...</div>
+             <div className="text-xs opacity-80">Finding deployable components.</div>
+           </div>
+        </div>
+      )}
+
+      {!isAnalyzing && components.length > 1 ? (
+        <div className="space-y-4">
+          <label className="block text-sm font-medium mb-1 flex items-center gap-2">
+            Monorepo Components ({components.length} detected)
+          </label>
+          <div className="space-y-4">
+            {components.map((c) => (
+              <div key={c.path} className="p-4 border border-slate-700 rounded-lg bg-slate-800/50">
+                <h4 className="text-sm font-medium mb-4 text-violet-300">Environment variables for <strong>{c.path}</strong></h4>
+                <EnvFileEditor
+                  value={envVarsMap[c.path] || []}
+                  onChange={(vars) => setEnvVarsMap({...envVarsMap, [c.path]: vars})}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        !isAnalyzing && <EnvFileEditor value={envVars} onChange={setEnvVars} />
+      )}
+
 
       <Button
         type="submit"
