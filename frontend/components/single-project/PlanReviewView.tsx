@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
@@ -16,8 +16,12 @@ interface PlanReviewViewProps {
 export default function PlanReviewView({ project }: PlanReviewViewProps) {
   const { data: session } = useSession();
   const router = useRouter();
-  const [localPlan, setLocalPlan] = useState<any>(project.deployment_plan ?? null);
-  const [planStatus, setPlanStatus] = useState<string | null>(project.plan_status ?? null);
+  const [localPlan, setLocalPlan] = useState<any>(
+    project.deployment_plan ?? null,
+  );
+  const [planStatus, setPlanStatus] = useState<string | null>(
+    project.plan_status ?? null,
+  );
   const [startingDeploy, setStartingDeploy] = useState(false);
 
   const projectId = project.project_id;
@@ -33,11 +37,14 @@ export default function PlanReviewView({ project }: PlanReviewViewProps) {
       interval = setInterval(async () => {
         if (!session?.backendToken) return;
         try {
-          const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/plan`, {
-            headers: {
-              Authorization: `Bearer ${session.backendToken}`,
+          const res = await fetch(
+            `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/plan`,
+            {
+              headers: {
+                Authorization: `Bearer ${session.backendToken}`,
+              },
             },
-          });
+          );
           if (res.ok) {
             const data = await res.json();
             setPlanStatus(data.status);
@@ -60,14 +67,17 @@ export default function PlanReviewView({ project }: PlanReviewViewProps) {
 
     if (!session?.backendToken) return;
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/plan`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.backendToken}`,
+      await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/plan`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.backendToken}`,
+          },
+          body: JSON.stringify(updatedPlan),
         },
-        body: JSON.stringify(updatedPlan),
-      });
+      );
     } catch (err) {
       console.error("Error saving plan", err);
     }
@@ -77,13 +87,16 @@ export default function PlanReviewView({ project }: PlanReviewViewProps) {
     if (!session?.backendToken) return;
     setStartingDeploy(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/deploy`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.backendToken}`,
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/deploy`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.backendToken}`,
+          },
         },
-      });
+      );
       if (res.ok) {
         setPlanStatus("approved");
         router.push(`/dashboard/project/${projectId}/deploy`);
@@ -117,10 +130,12 @@ export default function PlanReviewView({ project }: PlanReviewViewProps) {
             </div>
 
             <div className="text-center space-y-2">
-              <h3 className="text-xl font-semibold text-white">Analyzing Repository</h3>
+              <h3 className="text-xl font-semibold text-white">
+                Analyzing Repository
+              </h3>
               <p className="text-slate-400 text-sm max-w-md">
-                We are detecting components, infrastructure, and connections to build a
-                deployment plan.
+                We are detecting components, infrastructure, and connections to
+                build a deployment plan.
               </p>
             </div>
 
@@ -138,7 +153,9 @@ export default function PlanReviewView({ project }: PlanReviewViewProps) {
                       i === 1 ? "animate-pulse" : ""
                     }`}
                   ></div>
-                  <span className={i < 2 ? "text-slate-300" : "text-slate-600"}>{step}</span>
+                  <span className={i < 2 ? "text-slate-300" : "text-slate-600"}>
+                    {step}
+                  </span>
                 </div>
               ))}
             </div>
@@ -151,7 +168,9 @@ export default function PlanReviewView({ project }: PlanReviewViewProps) {
           <div className="bg-gradient-to-r from-violet-900/50 to-slate-900/50 border-b border-violet-600/30 px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-3 h-3 rounded-full bg-violet-500 animate-pulse"></div>
-              <h3 className="text-lg font-semibold text-white">Deployment Plan</h3>
+              <h3 className="text-lg font-semibold text-white">
+                Deployment Plan
+              </h3>
               <span className="px-2 py-0.5 text-xs font-medium text-violet-400 bg-violet-900/30 rounded-full border border-violet-600/30">
                 {planStatus === "approved" ? "Approved" : "Pending Review"}
               </span>
@@ -159,7 +178,11 @@ export default function PlanReviewView({ project }: PlanReviewViewProps) {
           </div>
 
           <div className="w-full relative" style={{ height: "600px" }}>
-            <DeploymentPlanEditor plan={localPlan} projectId={projectId} onSave={handlePlanSave} />
+            <DeploymentPlanEditor
+              plan={localPlan}
+              projectId={projectId}
+              onSave={handlePlanSave}
+            />
           </div>
 
           <div className="bg-slate-900/80 border-t border-slate-800 p-4 flex justify-end">
@@ -169,7 +192,9 @@ export default function PlanReviewView({ project }: PlanReviewViewProps) {
               className="bg-violet-600 text-white hover:bg-violet-700 font-semibold shadow-lg shadow-violet-900/20"
             >
               <Rocket className="w-4 h-4 mr-2" />
-              {startingDeploy ? "Starting Deployment..." : "Approve Plan & Start Deployment"}
+              {startingDeploy
+                ? "Starting Deployment..."
+                : "Approve Plan & Start Deployment"}
             </Button>
           </div>
         </div>

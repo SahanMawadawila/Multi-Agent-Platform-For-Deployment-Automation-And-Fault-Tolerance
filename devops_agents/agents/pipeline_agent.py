@@ -137,7 +137,7 @@ async def pipeline_writing_agent(state: AgentState):
     repo_owner = state["repo_owner"]
     repo_name = state["repo_name"]
     component_name = state.get("component_name")  # None for single project
-    branch_name = state.get("branch_name")  # None for single project
+    branch_name = state.get("branch_name")  # Optional
     
     send_terminal_message(project_id, "🚀 Starting CI/CD pipeline generation...\n\r", component_name)
     
@@ -174,11 +174,14 @@ async def pipeline_writing_agent(state: AgentState):
     component_path = state.get("component_path")  # None for single project
     workflow_content = generate_workflow_content(settings.aws_region, ecr_repo_name, build_version, branch_name, component_path)
 
+    workflow_name = "ci.yml"
+    if component_name:
+        workflow_name = f"ci-{component_name}.yml"
 
     await AsyncGitTools.write_and_push(
-        local_path, 
-        ".github/workflows/ci.yml", 
-        workflow_content, 
+        local_path,
+        f".github/workflows/{workflow_name}",
+        workflow_content,
         f"feat: Update pipeline for version {build_version}"
     )
     

@@ -1,0 +1,82 @@
+{% if stateful %}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ service_name }}
+  namespace: {{ namespace }}
+spec:
+  serviceName: {{ service_name }}
+  replicas: {{ replicas }}
+  selector:
+    matchLabels:
+      app: {{ service_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ service_name }}
+    spec:
+      containers:
+      - name: {{ service_name }}
+        image: {{ image }}
+        ports:
+        - containerPort: {{ port }}
+        {% if env_vars %}
+        env:
+        {% for key, value in env_vars.items() %}
+        - name: {{ key }}
+          value: "{{ value }}"
+        {% endfor %}
+        {% endif %}
+        {% if mount_path %}
+        volumeMounts:
+        - name: data
+          mountPath: {{ mount_path }}
+        {% endif %}
+        resources:
+          limits:
+            memory: "{{ memory_limit }}"
+            cpu: "{{ cpu_limit }}"
+  {% if storage_size %}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "{{ storage_class }}"
+      resources:
+        requests:
+          storage: {{ storage_size }}
+  {% endif %}
+{% else %}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ service_name }}
+  namespace: {{ namespace }}
+spec:
+  replicas: {{ replicas }}
+  selector:
+    matchLabels:
+      app: {{ service_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ service_name }}
+    spec:
+      containers:
+      - name: {{ service_name }}
+        image: {{ image }}
+        ports:
+        - containerPort: {{ port }}
+        {% if env_vars %}
+        env:
+        {% for key, value in env_vars.items() %}
+        - name: {{ key }}
+          value: "{{ value }}"
+        {% endfor %}
+        {% endif %}
+        resources:
+          limits:
+            memory: "{{ memory_limit }}"
+            cpu: "{{ cpu_limit }}"
+{% endif %}

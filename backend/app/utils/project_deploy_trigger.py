@@ -118,6 +118,11 @@ async def trigger_deployment_process(project_id: str):
         if not project:
             print(f"Project with ID {project_id} not found.")
             return
+
+        if not project.deployment_plan:
+            send_terminal_message(str(project_id), "❌ No approved deployment plan found. Please approve a plan first.\n\r")
+            print(f"No deployment plan for project {project_id}.")
+            return
         
         send_terminal_message(str(project_id), "Starting deployment process...\n\r")
 
@@ -237,6 +242,7 @@ async def trigger_deployment_process(project_id: str):
                 "build_id": str(build_id),
                 "build_version": new_version,
                 "repo_url": f"https://github.com/{settings.GITHUB_ORG}/{mirror_name}.git",
+                "deployment_plan": project.deployment_plan,
             }
 
             # 5. Send message to kafka

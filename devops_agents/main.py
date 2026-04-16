@@ -12,9 +12,8 @@ from aiokafka import AIOKafkaConsumer
 from config.settings import settings  
 from graph import component_graph, post_processing_graph  
 from tools.git_tools import AsyncGitTools
-from agents.monorepo_detector_agent import detect_monorepo
-from agents.monorepo_analyzer_agent import analyze_monorepo
 from agents.deployment_planner_agent import run_deployment_planner
+from agents.infra_deployment_agent import infra_deployment_agent
 
 dotenv.load_dotenv()
 
@@ -26,6 +25,7 @@ async def process_job(job):
     build_version = job.get("build_version", "latest")
     skip_build = job.get("skip_build", False)
     gitops_commit_id = job.get("gitops_commit_id")
+    deployment_plan = job.get("deployment_plan") or {}
     
     # Handle rollback
     if skip_build:
@@ -33,16 +33,23 @@ async def process_job(job):
         await handle_rollback(project_id, build_id, build_version, gitops_commit_id)
         return
     
+    if not deployment_plan:
+        send_terminal_message(project_id, "❌ No deployment plan found. Please approve a plan before deploying.\n\r")
+        send_build_event(project_id, build_id, "failed", details={"error": "Missing deployment plan"})
+        return
+
+    if not repo_url:
+        repo_url = deployment_plan.get("repo_url")
+
+    if not repo_url:
+        send_terminal_message(project_id, "❌ Missing repo URL for deployment.\n\r")
+        send_build_event(project_id, build_id, "failed", details={"error": "Missing repo URL"})
+        return
+
     send_build_event(project_id, build_id, "in_progress")
-    
+
     repo_name_full = repo_url.split("github.com/")[-1].replace(".git", "")
     owner, name = repo_name_full.split("/")
-    
-    local_path = os.path.abspath(f"temp/{name}")
-    
-    # Clone repo and list files
-    await AsyncGitTools.clone_repository(repo_url, local_path)
-    files = await AsyncGitTools.list_files(local_path)
     
     config = { "recursion_limit": 50 }
     start_time = time.time()
@@ -53,74 +60,46 @@ async def process_job(job):
         shutil.rmtree(gitops_dir)
     os.makedirs(gitops_dir, exist_ok=True)
     
-    # Step 1: Detect if monorepo
-    is_monorepo = await detect_monorepo(files, project_id)
-    
+    components = deployment_plan.get("components", [])
+    app_components = [comp for comp in components if comp.get("type") == "application"]
+    infra_components = [comp for comp in components if comp.get("type") == "infrastructure"]
+    is_multi_project = deployment_plan.get("is_monorepo") or len(app_components) > 1
+
     # Build the components list for post-processing
     pp_components = []
-    
-    if not is_monorepo:
-        # ==========================================
-        # SINGLE PROJECT
-        # ==========================================
-        initial_state = {
-            "project_id": project_id,
-            "build_id": build_id,
-            "build_version": build_version,
-            "local_path": local_path,
-            "file_list": files,
-            "repo_owner": owner,
-            "repo_name": name,
-            "messages": [],
-            "retry_count": 0,
-            "error_fixing_plan": None,
-            "current_step_index": 0,
-            "analysis_results": None,
-            "start_time": start_time,
-            "is_multi_project": False,
-        }
-        
-        result = await component_graph.ainvoke(initial_state, config=config)
-        
-        if result.get("build_status") == "failed":
-            send_build_event(project_id, build_id, "failed", details={
-                "error": result.get("build_error_logs", "Build failed"),
-                "duration": int(time.time() - start_time),
-            })
-            return
-        
-        app_name = result.get("k8s_app_name", f"app-{project_id}")
-        analysis = result.get("analyzed_repository_details")
-        pp_components = [{
-            "name": "app",
-            "app_name": app_name,
-            "api_path_prefix": "/",
-            "port": analysis.port if analysis else 3000,
-            "health_check_path": getattr(analysis, "health_check_path", "/"),
-        }]
-    else:
-        # ==========================================
-        # MULTI-PROJECT (MONOREPO)
-        # ==========================================
-        components = await analyze_monorepo(files, project_id, local_path)
-        
-        send_terminal_message(project_id, f"🔀 Deploying {len(components)} components in parallel...\n\r")
-        
+
+    if infra_components:
+        infra_tasks = []
+        for infra in infra_components:
+            infra_tasks.append(infra_deployment_agent({
+                "project_id": project_id,
+                "infra_component": infra,
+            }))
+        await asyncio.gather(*infra_tasks)
+
+    if app_components:
+        send_terminal_message(project_id, f"🔀 Deploying {len(app_components)} application components in parallel...\n\r")
+
         tasks = []
-        for comp in components:
-            comp_local_path = os.path.abspath(f"temp/{name}-{comp['name']}")
+        comp_specs = []
+        for comp in app_components:
+            comp_name = comp.get("name")
+            comp_local_path = os.path.abspath(f"temp/{name}-{comp_name or 'app'}")
             await AsyncGitTools.clone_repository(repo_url, comp_local_path)
-            
-            branch_name = comp["name"]
-            send_terminal_message(project_id, f"🔀 Creating branch '{branch_name}' for: {comp['name']}\n\r")
-            await AsyncGitTools.create_and_checkout_branch(comp_local_path, branch_name)
-            
+            files = await AsyncGitTools.list_files(comp_local_path)
+
+            component_path = comp.get("path", ".")
+            if component_path in (".", "./", ""):
+                component_path = None
+
+            component_name = comp_name if is_multi_project else None
+
             comp_state = {
                 "project_id": project_id,
                 "build_id": build_id,
                 "build_version": build_version,
                 "local_path": comp_local_path,
-                "file_list": comp["file_list"],
+                "file_list": files,
                 "repo_owner": owner,
                 "repo_name": name,
                 "messages": [],
@@ -129,29 +108,37 @@ async def process_job(job):
                 "current_step_index": 0,
                 "analysis_results": None,
                 "start_time": start_time,
-                "component_name": comp["name"],
-                "component_path": comp["path"],
-                "branch_name": branch_name,
-                "is_multi_project": True,
-                "overridden_envs": comp.get("networking_env_overrides", {}),
+                "component_name": component_name,
+                "component_path": component_path,
+                "component_spec": comp,
+                "is_multi_project": bool(component_name),
                 "role": comp.get("role", "backend"),
-                "api_path_prefix": comp.get("api_path_prefix", "/"),
+                "api_path_prefix": comp.get("ingress", {}).get("path_prefix", "/"),
             }
+            comp_specs.append(comp)
             tasks.append(component_graph.ainvoke(comp_state, config=config))
-        
+
         results = await asyncio.gather(*tasks)
-        
-        # Build post-processing component list from results
-        for comp, result in zip(components, results):
-            app_name = result.get("k8s_app_name", f"app-{project_id}-{comp['name']}")
-            analysis = result.get("analyzed_repository_details")
-            pp_components.append({
-                "name": comp["name"],
-                "app_name": app_name,
-                "api_path_prefix": comp.get("api_path_prefix", "/"),
-                "port": analysis.port if analysis else 3000,
-                "health_check_path": getattr(analysis, "health_check_path", "/") if analysis else "/",
-            })
+
+        for comp, result in zip(comp_specs, results):
+            if result.get("build_status") == "failed":
+                send_build_event(project_id, build_id, "failed", details={
+                    "error": result.get("build_error_logs", "Build failed"),
+                    "duration": int(time.time() - start_time),
+                })
+                return
+
+            comp_name = comp.get("name")
+            app_name = result.get("k8s_app_name", f"app-{project_id}-{comp_name}" if comp_name else f"app-{project_id}")
+            ingress = comp.get("ingress") or {}
+            if ingress.get("expose", True):
+                pp_components.append({
+                    "name": comp_name,
+                    "app_name": app_name,
+                    "api_path_prefix": ingress.get("path_prefix", "/"),
+                    "port": comp.get("port", 3000),
+                    "health_check_path": comp.get("health_check_path", "/"),
+                })
     
     # ==========================================
     # POST-PROCESSING GRAPH (runs once for both)
@@ -162,8 +149,9 @@ async def process_job(job):
         "project_id": project_id,
         "build_id": build_id,
         "start_time": start_time,
-        "is_multi_project": is_monorepo,
+        "is_multi_project": is_multi_project,
         "components": pp_components,
+        "ingress_config": deployment_plan.get("ingress"),
     }
     
     await post_processing_graph.ainvoke(post_state, config=config)

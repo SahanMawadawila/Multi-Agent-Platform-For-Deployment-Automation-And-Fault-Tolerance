@@ -3,8 +3,8 @@ Deployment Planning Agent
 A single, powerful agentic loop (like Claude Code) that iteratively explores
 a repository using tools and produces a comprehensive DeploymentPlan.
 
-Replaces the old fragmented approach (monorepo_detector → monorepo_analyzer → repo_analyst)
-with one agent that decides what to read, reads it, reasons, and produces the plan.
+Replaces the old fragmented approach with one agent that decides what to read,
+reasons over the repository, and produces the plan.
 """
 
 import os

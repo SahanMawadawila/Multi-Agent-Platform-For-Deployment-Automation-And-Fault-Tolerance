@@ -17,13 +17,14 @@ async def k8s_architect_agent(state):
     """
     project_id = state.get("project_id", "")
     analysis = state.get("analyzed_repository_details")
+    component_spec = state.get("component_spec") or {}
     component_name = state.get("component_name")
     is_multi_project = state.get("is_multi_project", False)
     overridden_envs = state.get("overridden_envs", {})
     
-    if not analysis:
-        send_terminal_message(project_id, "❌ No repository analysis found. Skipping K8s Architect.\n\r", component_name)
-        return {"build_status": "k8s_failed_no_analysis"}
+    if not analysis and not component_spec:
+        send_terminal_message(project_id, "❌ Missing component details. Skipping K8s Architect.\n\r", component_name)
+        return {"build_status": "k8s_failed_no_component_spec"}
         
     if not state.get("image_url"):
         send_terminal_message(project_id, "❌ No image URL found. Pipeline agent failed to provide image.\n\r", component_name)
@@ -35,20 +36,30 @@ async def k8s_architect_agent(state):
     app_name = f"app-{project_id}-{component_name}" if component_name else f"app-{project_id}"
     namespace = project_id
 
+    env_list = component_spec.get("env_variables", []) if component_spec else []
+    env_vars = {env.get("key"): str(env.get("value", "")) for env in env_list if env.get("key")}
+
+    resources = component_spec.get("resources", {}) if component_spec else {}
+
+    port = component_spec.get("port") if component_spec else getattr(analysis, "port", None)
+    health_path = component_spec.get("health_check_path") if component_spec else getattr(analysis, "health_check_path", "/")
+    if port is None and analysis:
+        port = analysis.port
+
     # Template data
     data = {
         "app_name": app_name,
         "namespace": namespace,
         "replicas": 1,
         "image_url": state.get("image_url"),
-        "port": analysis.port,
-        "memory_limit": getattr(analysis, "memory_limit", "256Mi"),
-        "cpu_limit": getattr(analysis, "cpu_limit", "200m"),
-        "health_check_path": getattr(analysis, "health_check_path", "/"),
+        "port": port or 3000,
+        "memory_limit": resources.get("memory_limit") or getattr(analysis, "memory_limit", "256Mi"),
+        "cpu_limit": resources.get("cpu_limit") or getattr(analysis, "cpu_limit", "200m"),
+        "health_check_path": health_path or "/",
         "image_pull_secret": "regcred",
         "domain_name": settings.domain_name,
         "acm_certificate_arn": settings.acm_certificate_arn,
-        "env_vars": overridden_envs or {},
+        "env_vars": overridden_envs or env_vars or {},
     }
 
     # Generate Deployment + Service YAML

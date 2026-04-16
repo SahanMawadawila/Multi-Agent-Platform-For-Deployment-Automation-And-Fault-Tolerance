@@ -1,12 +1,6 @@
 import time
 from langgraph.graph import StateGraph, END  
 from state import AgentState, PostProcessingState
-from agents.repo_analyst import (
-    repo_analysis_agent, 
-    repo_analysis_tool_node, 
-    finalize_analysis, 
-    check_analysis_finish
-)
 from agents.docker_agent import docker_writing_agent
 from agents.pipeline_agent import pipeline_writing_agent
 from agents.monitor_agent import build_monitor_agent
@@ -19,7 +13,6 @@ from agents.error_fixing_agent import (
     finalize_fix
 )
 from agents.k8s_architect_agent import k8s_architect_agent
-from agents.database_deployment_agent import database_deployment_agent
 from agents.ingress_networking import generate_ingress
 from agents.gitops_argocd_agent import gitops_argocd_agent
 from agents.deployment_monitor_agent import deployment_monitor_agent
@@ -50,20 +43,8 @@ def check_build_status(state):
             
     return "give_up"
 
-def after_k8s_route(state):
-    """Route after k8s_architect: go to database_deployment if needed, else END."""
-    needs_db = state.get("needs_database", False)
-    if needs_db:
-        return "database_deployment"
-    return "end"
-
 # Build the component workflow
 component_workflow = StateGraph(AgentState)
-
-# Nodes - Repo Analysis
-component_workflow.add_node("repo_analysis_agent", repo_analysis_agent)
-component_workflow.add_node("repo_analysis_tool", repo_analysis_tool_node)
-component_workflow.add_node("finalize_analysis", finalize_analysis)
 
 # Nodes - Docker & Pipeline
 component_workflow.add_node("docker_writing_agent", docker_writing_agent)
@@ -79,9 +60,8 @@ component_workflow.add_node("error_fixing_agent", error_fixing_agent)
 component_workflow.add_node("error_fixing_tool", error_fixing_tool_node)
 component_workflow.add_node("finalize_fix", finalize_fix)
 
-# Nodes - K8s Manifest Generation + Database
+# Nodes - K8s Manifest Generation
 component_workflow.add_node("k8s_architect_agent", k8s_architect_agent)
-component_workflow.add_node("database_deployment_agent", database_deployment_agent)
 
 # Nodes - Build Failed (only for build failures within this component)
 def mark_component_failed(state):
@@ -94,23 +74,9 @@ def mark_component_failed(state):
 component_workflow.add_node("failed", mark_component_failed)
 
 # Edges
-component_workflow.set_entry_point("repo_analysis_agent")
+component_workflow.set_entry_point("docker_writing_agent")
 
-# Repo Analysis flow
-component_workflow.add_conditional_edges(
-    "repo_analysis_agent",
-    check_analysis_finish,
-    {
-        "repo_analysis_tool": "repo_analysis_tool",
-        "finalize_analysis": "finalize_analysis",
-        "repo_analysis_agent": "repo_analysis_agent",
-        "failed": "failed"
-    }
-)
-component_workflow.add_edge("repo_analysis_tool", "repo_analysis_agent")
-
-# Analysis -> Docker -> Pipeline -> Build Monitor
-component_workflow.add_edge("finalize_analysis", "docker_writing_agent")
+# Docker -> Pipeline -> Build Monitor
 component_workflow.add_edge("docker_writing_agent", "pipeline_writing_agent")
 component_workflow.add_edge("pipeline_writing_agent", "build_monitor_agent")
 
@@ -143,18 +109,8 @@ component_workflow.add_conditional_edges(
 component_workflow.add_edge("error_fixing_tool", "error_fixing_agent")
 component_workflow.add_edge("finalize_fix", "build_monitor_agent")
 
-# K8s Architect -> conditional database
-component_workflow.add_conditional_edges(
-    "k8s_architect_agent",
-    after_k8s_route,
-    {
-        "database_deployment": "database_deployment_agent",
-        "end": END,
-    }
-)
-
-# Database -> END
-component_workflow.add_edge("database_deployment_agent", END)
+# K8s Architect -> END
+component_workflow.add_edge("k8s_architect_agent", END)
 
 # Failed -> END
 component_workflow.add_edge("failed", END)

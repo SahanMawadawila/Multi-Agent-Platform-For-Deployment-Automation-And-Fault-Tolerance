@@ -1,56 +1,56 @@
 "use client";
 
-import { Card } from '@/components/ui/card';
-import {
-  CheckCircle,
-  Server
-} from 'lucide-react';
-import { useSession } from 'next-auth/react';
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { Skeleton } from './ui/skeleton';
-import { ProjectSimple } from '@/types/project';
-import { PaginationInfo } from '@/types/pagination';
+import { Card } from "@/components/ui/card";
+import { CheckCircle, Server } from "lucide-react";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { Skeleton } from "./ui/skeleton";
+import { ProjectSimple } from "@/types/project";
+import { PaginationInfo } from "@/types/pagination";
 
-
-async function loadProjects(accessToken: string, page: number = 1, limit: number = 40) {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects?page=${page}&limit=${limit}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
+async function loadProjects(
+  accessToken: string,
+  page: number = 1,
+  limit: number = 40,
+) {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects?page=${page}&limit=${limit}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
     },
-  });
+  );
 
   if (!res.ok) {
-    throw new Error('Failed to fetch projects');
+    throw new Error("Failed to fetch projects");
   }
 
-  return await res.json() as {
+  return (await res.json()) as {
     projects: ProjectSimple[];
     pagination: PaginationInfo;
-  }
-
+  };
 }
 
 function getProjectStateColor(status: string) {
   switch (status) {
-    case 'Live':
-      return 'text-green-400';
-    case 'Degraded':
-      return 'text-yellow-400';
-    case 'Offline':
-      return 'text-red-400';
+    case "Live":
+      return "text-green-400";
+    case "Degraded":
+      return "text-yellow-400";
+    case "Offline":
+      return "text-red-400";
     default:
-      return 'text-gray-400';
+      return "text-gray-400";
   }
 }
 
 function ProjectCardSkeleton() {
   return (
-    <Card
-      className="p-4 rounded-lg border border-slate-800 bg-slate-900/50 hover:border-violet-500/50 transition-colors cursor-pointer flex justify-between items-center w-full"
-    >
+    <Card className="p-4 rounded-lg border border-slate-800 bg-slate-900/50 hover:border-violet-500/50 transition-colors cursor-pointer flex justify-between items-center w-full">
       <div className="flex items-center gap-4 w-full">
         {/* Left side: Icon | Name/Type (stacked) */}
         <div className="flex items-center gap-4">
@@ -81,16 +81,17 @@ export default function ProjectList() {
   const token = data?.backendToken;
 
   useEffect(() => {
-    console.log('Loading projects with token:', token);
+    console.log("Loading projects with token:", token);
     if (!token) return;
     setProjectsLoading(true);
     loadProjects(token)
-      .then(data => {
+      .then((data) => {
         setProjects(data.projects);
       })
-      .catch(err => {
-        console.error('Error loading projects:', err);
-      }).finally(() => {
+      .catch((err) => {
+        console.error("Error loading projects:", err);
+      })
+      .finally(() => {
         setProjectsLoading(false);
       });
   }, [token]);
@@ -102,20 +103,21 @@ export default function ProjectList() {
       </div>
 
       <div className="space-y-4">
-        {
-          projectsLoading && <>
+        {projectsLoading && (
+          <>
             <ProjectCardSkeleton />
             <ProjectCardSkeleton />
             <ProjectCardSkeleton />
             <ProjectCardSkeleton />
           </>
-        }
+        )}
         {projects.map((project, index) => (
-          <Link href={`/dashboard/project/${project.project_id}/plan`} key={index}
-            className="block">
-            <Card
-              className="p-4 rounded-lg border border-slate-800 bg-slate-900/50 hover:border-violet-500/50 transition-colors cursor-pointer flex justify-between items-center w-full"
-            >
+          <Link
+            href={`/dashboard/project/${project.project_id}/plan`}
+            key={index}
+            className="block"
+          >
+            <Card className="p-4 rounded-lg border border-slate-800 bg-slate-900/50 hover:border-violet-500/50 transition-colors cursor-pointer flex justify-between items-center w-full">
               <div className="flex items-center gap-4 w-full">
                 {/* Left side: Icon | Name/Type (stacked) */}
                 <div className="flex items-center gap-4">
@@ -125,15 +127,21 @@ export default function ProjectList() {
                   </div>
                   {/* Name & Type (stacked) */}
                   <div>
-                    <h3 className="text-base font-semibold text-white">{project.project_name}</h3>
-                    <p className="text-xs text-slate-500">{project.domain_name || "No domain"}</p>
+                    <h3 className="text-base font-semibold text-white">
+                      {project.project_name}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {project.domain_name || "No domain"}
+                    </p>
                   </div>
                 </div>
 
                 {/* Right side: Status/Uptime (stacked) */}
                 <div className="text-right ms-auto">
                   {/* Status */}
-                  <div className={`text-sm font-medium flex items-center gap-1 justify-end ${getProjectStateColor(project.status || "")}`}>
+                  <div
+                    className={`text-sm font-medium flex items-center gap-1 justify-end ${getProjectStateColor(project.status || "")}`}
+                  >
                     <CheckCircle size={12} /> {project.status}
                   </div>
                   {/* Uptime

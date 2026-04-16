@@ -8,14 +8,20 @@ import DeploymentExecutionView from "@/components/single-project/DeploymentExecu
 import { Skeleton } from "@/components/ui/skeleton";
 import { TerminalSocketProvider } from "@/components/single-project/TerminalSocketContext";
 
-async function fetchProjectDetails(projectId: string, accessToken: string): Promise<DetailedProject> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+async function fetchProjectDetails(
+  projectId: string,
+  accessToken: string,
+): Promise<DetailedProject> {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
     },
-  });
+  );
 
   if (!res.ok) {
     throw new Error("Failed to fetch project details");
@@ -67,7 +73,10 @@ export default function ProjectDeployPage() {
   }
 
   return (
-    <TerminalSocketProvider projectId={projectId || ""} accessToken={token || ""}>
+    <TerminalSocketProvider
+      projectId={projectId || ""}
+      accessToken={token || ""}
+    >
       <DeploymentExecutionView project={projectData} />
     </TerminalSocketProvider>
   );

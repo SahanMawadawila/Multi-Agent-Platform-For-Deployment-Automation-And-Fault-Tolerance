@@ -39,13 +39,41 @@ DOCKERFILE_PROMPT = """You are a Docker expert. Generate a production-ready Dock
 Return ONLY the Dockerfile content. No markdown, no explanations.
 """
 
+def _resolve_component_analysis(state: AgentState):
+    analysis = state.get("analyzed_repository_details")
+    if analysis:
+        return analysis
+
+    component_spec = state.get("component_spec") or {}
+    if not component_spec:
+        return None
+
+    class _PlanAnalysis:
+        def __init__(self, spec: dict):
+            self.project_type = spec.get("project_type", "node")
+            self.framework = spec.get("framework")
+            self.version = spec.get("version", "18")
+            self.package_manager = spec.get("package_manager", "npm")
+            self.build_command = spec.get("build_command", "")
+            self.run_command = spec.get("run_command", "")
+            self.port = spec.get("port", 3000)
+            self.has_lockfile = False
+            self.needs_build_step = spec.get("needs_build_step", False)
+
+    return _PlanAnalysis(component_spec)
+
+
 async def docker_writing_agent(state: AgentState):
     """AI-powered Docker agent that generates production Dockerfiles."""
-    
-    analysis = state["analyzed_repository_details"]
+
+    analysis = _resolve_component_analysis(state)
     local_path = state["local_path"]
     project_id = state.get("project_id", "")
     component_name = state.get("component_name")
+
+    if not analysis:
+        send_terminal_message(project_id, "❌ Missing component details. Skipping Dockerfile generation.\n\r", component_name)
+        return {"build_status": "docker_failed_no_component_spec"}
     
     send_terminal_message(project_id, "🐳 Generating Dockerfile...\n\r", component_name)
     

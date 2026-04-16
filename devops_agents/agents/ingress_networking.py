@@ -15,9 +15,10 @@ def generate_ingress(state):
     project_id = state.get("project_id", "")
     is_multi_project = state.get("is_multi_project", False)
     components = state.get("components", [])
+    ingress_config = state.get("ingress_config") or {}
     
     namespace = project_id
-    host = f"app-{project_id}.{settings.domain_name}"
+    host = ingress_config.get("host") or f"app-{project_id}.{settings.domain_name}"
     
     # Use absolute path to templates
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -29,7 +30,26 @@ def generate_ingress(state):
     app_dir = os.path.join(gitops_base, "app")
     os.makedirs(app_dir, exist_ok=True)
     
-    if is_multi_project:
+    if ingress_config.get("rules"):
+        send_terminal_message(project_id, "🌐 Generating Ingress from plan rules...\n\r")
+
+        service_map = {comp.get("name"): comp.get("app_name") for comp in components}
+        template_components = []
+        for rule in ingress_config.get("rules", []):
+            target_service = service_map.get(rule.get("service")) or rule.get("service")
+            template_components.append({
+                "path_prefix": rule.get("path", "/"),
+                "service_name": target_service,
+            })
+
+        template = env.get_template("ingress-multi.j2")
+        content = template.render(
+            namespace=namespace,
+            host=host,
+            acm_certificate_arn=settings.acm_certificate_arn,
+            components=template_components,
+        )
+    elif is_multi_project:
         send_terminal_message(project_id, "🌐 Generating shared Ingress with path-based routing...\n\r")
         
         # Sort: specific paths first (/api, /auth), catch-all (/) last
@@ -54,6 +74,9 @@ def generate_ingress(state):
             components=template_components,
         )
     else:
+        if not components:
+            send_terminal_message(project_id, "ℹ️ No application components to expose. Skipping ingress.\n\r")
+            return {}
         send_terminal_message(project_id, "🌐 Generating Ingress...\n\r")
         
         comp = components[0]

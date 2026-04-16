@@ -7,14 +7,20 @@ import { DetailedProject } from "@/types/project";
 import PlanReviewView from "@/components/single-project/PlanReviewView";
 import { Skeleton } from "@/components/ui/skeleton";
 
-async function fetchProjectDetails(projectId: string, accessToken: string): Promise<DetailedProject> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+async function fetchProjectDetails(
+  projectId: string,
+  accessToken: string,
+): Promise<DetailedProject> {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
     },
-  });
+  );
 
   if (!res.ok) {
     throw new Error("Failed to fetch project details");

@@ -1,7 +1,6 @@
 # state.py
-from typing import TypedDict, List, Optional, Annotated
+from typing import TypedDict, List, Optional, Annotated, Dict, Any
 from langgraph.graph.message import add_messages
-from agents.repo_analyst import RepoAnalysisOutput
 
 
 class AgentState(TypedDict):
@@ -13,7 +12,7 @@ class AgentState(TypedDict):
     repo_owner: str
     repo_name: str
     messages: Annotated[List, add_messages] 
-    analyzed_repository_details: Optional[RepoAnalysisOutput] 
+    analyzed_repository_details: Optional[Dict[str, Any]]
     build_status: Optional[str]
     build_error_logs: Optional[str]
     retry_count: int
@@ -30,11 +29,9 @@ class AgentState(TypedDict):
     start_time: Optional[float]  # time.time() when job started, for duration calc
     component_name: Optional[str]  # Component name for multi-project repos (e.g., "frontend")
     component_path: Optional[str]  # Component path relative to repo root (e.g., "frontend")
+    component_spec: Optional[Dict[str, Any]]  # Plan-driven component payload (application)
     branch_name: Optional[str]  # Branch to push to (used for multi-project repos)
     overridden_envs: Optional[dict]  # {"KEY": "value"} — env vars injected into K8s Deployment
-    needs_database: Optional[bool]  # Whether this component needs a database deployed
-    database_type: Optional[str]  # "mongodb", "postgresql", "mysql"
-    database_credentials: Optional[dict] # {db_user, db_password, db_name, db_root_password}
     role: Optional[str]  # "frontend", "backend", "worker", "api-gateway"
     api_path_prefix: Optional[str]  # "/api", "/auth" — for Ingress path rules
     is_multi_project: Optional[bool]  # True if repo has multiple components
@@ -48,6 +45,7 @@ class PostProcessingState(TypedDict):
     is_multi_project: bool
     # List of component dicts: [{name, app_name, api_path_prefix, port, health_check_path}]
     components: list
+    ingress_config: Optional[dict]
     gitops_commit_id: Optional[str]
     access_url: Optional[str]
     deployment_status: Optional[str]

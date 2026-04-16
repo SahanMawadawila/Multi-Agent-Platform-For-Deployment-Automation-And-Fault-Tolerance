@@ -1,6 +1,12 @@
-'use client';
+"use client";
 
-import { CheckCircle, Clock, ExternalLink, GitCommit, XCircle } from "lucide-react";
+import {
+  CheckCircle,
+  Clock,
+  ExternalLink,
+  GitCommit,
+  XCircle,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Card } from "../ui/card";
@@ -57,9 +63,12 @@ const formatDate = (dateString: string) => {
   });
 };
 
-export default function DeploymentExecutionView({ project }: DeploymentExecutionViewProps) {
+export default function DeploymentExecutionView({
+  project,
+}: DeploymentExecutionViewProps) {
   const { data: session } = useSession();
-  const [currentDeployment, setCurrentDeployment] = useState<CurrentDeployment | null>(null);
+  const [currentDeployment, setCurrentDeployment] =
+    useState<CurrentDeployment | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -74,7 +83,7 @@ export default function DeploymentExecutionView({ project }: DeploymentExecution
               Authorization: `Bearer ${session.backendToken}`,
               "Content-Type": "application/json",
             },
-          }
+          },
         );
 
         if (res.ok) {
@@ -95,7 +104,9 @@ export default function DeploymentExecutionView({ project }: DeploymentExecution
     <div className="space-y-6">
       <div className="border-b border-slate-800 pb-4">
         <h1 className="text-3xl font-bold text-white">Deployment Console</h1>
-        <p className="text-sm text-slate-400">Monitor rollout progress and application topology.</p>
+        <p className="text-sm text-slate-400">
+          Monitor rollout progress and application topology.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -127,7 +138,9 @@ export default function DeploymentExecutionView({ project }: DeploymentExecution
           </Card>
 
           <div>
-            <h2 className="text-xl font-bold text-white mb-4">Current Deployment</h2>
+            <h2 className="text-xl font-bold text-white mb-4">
+              Current Deployment
+            </h2>
 
             {loading ? (
               <Card className="p-4 rounded-lg border border-slate-800 bg-slate-900/50">
@@ -149,7 +162,8 @@ export default function DeploymentExecutionView({ project }: DeploymentExecution
                         </span>
                       </p>
                       <p className="text-xs text-slate-500 flex items-center gap-1 mt-1">
-                        <Clock size={12} /> {formatDate(currentDeployment.build_date)}
+                        <Clock size={12} />{" "}
+                        {formatDate(currentDeployment.build_date)}
                       </p>
                     </div>
                   </div>
@@ -168,7 +182,9 @@ export default function DeploymentExecutionView({ project }: DeploymentExecution
                       {getStatusIcon(currentDeployment.build_status)}
                       <span
                         className={
-                          currentDeployment.build_status === "success" ? "text-green-400" : "text-red-400"
+                          currentDeployment.build_status === "success"
+                            ? "text-green-400"
+                            : "text-red-400"
                         }
                       >
                         {currentDeployment.build_status}
@@ -179,7 +195,9 @@ export default function DeploymentExecutionView({ project }: DeploymentExecution
               </Card>
             ) : (
               <Card className="p-4 rounded-lg border border-slate-800 bg-slate-900/50">
-                <p className="text-slate-400 text-sm text-center">No deployments yet</p>
+                <p className="text-slate-400 text-sm text-center">
+                  No deployments yet
+                </p>
               </Card>
             )}
           </div>

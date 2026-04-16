@@ -4,8 +4,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-
-
 function ProjectPageSkeleton() {
   return (
     <div className="space-y-8">
