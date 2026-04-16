@@ -78,12 +78,13 @@ class InfrastructureComponent(BaseModel):
     """A pre-built infrastructure component (uses Docker Hub image, only K8s manifests needed)."""
     name: str = Field(..., description="Service name (e.g., 'mongodb', 'kafka', 'redis')")
     type: Literal["infrastructure"] = Field("infrastructure", description="Component type")
+    scope: Literal["project", "global"] = Field("project", description="Scope of the infrastructure service")
+    owner_app: Optional[str] = Field(None, description="Owning app name if scope is 'project'")
     category: str = Field(..., description="Infrastructure category: 'database', 'message_broker', 'cache', 'coordination', 'search'")
     image: str = Field(..., description="Full Docker image with tag (e.g., 'mongo:7.0', 'confluentinc/cp-kafka:7.6.0')")
     build_image: bool = Field(False, description="Whether to build a Docker image (always false for infrastructure)")
     port: int = Field(..., description="Primary service port")
     credentials: Dict[str, CredentialField] = Field(default_factory=dict, description="Credentials (e.g., db_user, db_password)")
-    depends_on: List[str] = Field(default_factory=list, description="Other components this depends on (e.g., ['zookeeper'] for kafka)")
     env_variables: List[EnvVariable] = Field(default_factory=list, description="Additional env vars for this service")
     storage: Optional[StorageSpec] = Field(default_factory=StorageSpec, description="Persistent storage config")
     resources: ResourceSpec = Field(default_factory=ResourceSpec)
@@ -94,10 +95,8 @@ class Connection(BaseModel):
     from_component: str = Field(..., description="Source component name (e.g., 'backend')")
     to_component: str = Field(..., description="Target component or external service name (e.g., 'mongodb', 'Stripe API')")
     scope: Literal["internal", "external"] = Field(..., description="'internal' = deployed in cluster, 'external' = third-party service")
-    protocol: str = Field(..., description="Connection protocol: http, mongodb, kafka, redis, https, amqp, postgresql, mysql")
     env_key: str = Field(..., description="Environment variable holding this connection (e.g., 'MONGODB_URI', 'STRIPE_SECRET_KEY')")
     resolved_value: str = Field("", description="Resolved connection string/URL. Use K8s service names for internal.")
-    description: str = Field("", description="Human-readable description of this connection")
 
 
 class IngressRule(BaseModel):
