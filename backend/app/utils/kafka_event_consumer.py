@@ -37,6 +37,7 @@ class ProjectBuildEventConsumer:
     async def _consume_loop(self):
         try:
             async for msg in self.consumer:
+                print(f"\n[Kafka Event] Received msg on {msg.topic}: {msg.value.get('event_type') if isinstance(msg.value, dict) else 'unknown'}")
                 # msg.value is already deserialized JSON
                 await self.handle_event(msg.value)
                 if self._stop_event.is_set():
@@ -45,6 +46,46 @@ class ProjectBuildEventConsumer:
             return
 
     async def handle_event(self, payload: dict):
+        event_type = payload.get("event_type", "build_status")
+        
+        if event_type == "build_status":
+            await self.handle_build_status(payload)
+        elif event_type == "plan_result":
+            await self.handle_plan_result(payload)
+
+    async def handle_plan_result(self, payload: dict):
+        import uuid
+        project_id = payload.get("project_id")
+        plan_data = payload.get("plan")
+        
+        if not project_id or not plan_data:
+            print(f"Invalid plan result event: {payload}")
+            return
+            
+        print(f"Received deployment plan for project: {project_id}")
+        
+        try:
+            project_uuid = uuid.UUID(project_id)
+            async with SessionLocal() as session:
+                result = await session.execute(
+                    select(UserProject).where(UserProject.project_id == project_uuid)
+                )
+                project = result.scalars().first()
+                
+                if project:
+                    project.deployment_plan = plan_data
+                    project.plan_status = "ready"
+                    session.add(project)
+                    await session.commit()
+                    print(f"Successfully saved deployment plan for project: {project_id}")
+                else:
+                    print(f"Project {project_id} not found when saving plan")
+        except Exception as e:
+            import traceback
+            print(f"Error saving plan to database: {e}")
+            traceback.print_exc()
+
+    async def handle_build_status(self, payload: dict):
         # Expected payload keys: project_id, build_id, status, details
         project_id = payload.get("project_id")
         build_id = payload.get("build_id")

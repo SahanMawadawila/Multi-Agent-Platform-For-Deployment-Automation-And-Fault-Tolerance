@@ -45,17 +45,20 @@ async def kafka_listener():
         async for msg in consumer:
             event = msg.value
             
-            if ("project_id" not in event) or ("message" not in event):
+            project_id = event.get("project_id")
+            if not project_id:
                 continue
 
-            project_id = event["project_id"]
-            message = event["message"]
+            if "message" not in event:
+                continue
+            else:
+                message_to_send = event["message"]
 
             if project_id in PROJECT_CLIENTS:
                 dead = []
                 for ws in PROJECT_CLIENTS[project_id]:
                     try:
-                        await ws.send_text(message)
+                        await ws.send_text(message_to_send)
                     except:
                         dead.append(ws)
 

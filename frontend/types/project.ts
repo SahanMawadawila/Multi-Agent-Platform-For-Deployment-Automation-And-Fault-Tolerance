@@ -8,6 +8,8 @@ export interface DetailedProject {
   topology_info?: any;
   env_vars?: Record<string, string>;
   project_access_url?: string;
+  deployment_plan?: any;
+  plan_status?: string;
 }
 
 

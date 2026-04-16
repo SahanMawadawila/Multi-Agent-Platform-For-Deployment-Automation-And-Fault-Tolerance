@@ -27,7 +27,11 @@ class AsyncGitTools:
                     shutil.rmtree(clone_dir, onerror=force_remove_readonly) # If pull fails, delete and try again
 
             auth_url = repo_url.replace("https://", f"https://{settings.github_token}@")
-            git.Repo.clone_from(auth_url, clone_dir)
+            git.Repo.clone_from(
+                auth_url, clone_dir,
+                multi_options=["--config core.longpaths=true"],
+                allow_unsafe_options=True
+            )
             
             # Configure Git user for commits
             repo = git.Repo(clone_dir)
@@ -55,18 +59,28 @@ class AsyncGitTools:
         return await asyncio.to_thread(_walk)
 
     @staticmethod
-    async def read_file(local_path: str, file_path: str) -> str:
+    async def read_file(local_path: str, file_path: str, start_line: int = None, end_line: int = None) -> str:
         def _read():
             full_path = os.path.join(local_path, file_path)
             if os.path.exists(full_path):
                 # Check file size before reading
                 file_size = os.path.getsize(full_path)
-                if file_size > 100 * 1024:  # 100KB limit
+                if file_size > 100 * 1024 and not start_line and not end_line:  # 100KB limit
                     return f"Error: File '{file_path}' is too large ({file_size} bytes). Reading files over 100KB is disabled to prevent context overflow. Please check the file list instead if you only need to know if it exists."
 
                 try:
                     with open(full_path, 'r', encoding='utf-8') as f:
-                        return f.read()
+                        lines = f.readlines()
+                        
+                        if start_line is not None or end_line is not None:
+                            start_idx = max(0, start_line - 1) if start_line else 0
+                            end_idx = end_line if end_line else len(lines)
+                            selected_lines = lines[start_idx:end_idx]
+                            
+                            output_lines = [f"{i + start_idx + 1}: {line}" for i, line in enumerate(selected_lines)]
+                            return "".join(output_lines)
+                        
+                        return "".join(lines)
                 except Exception as e: return str(e)
             return "File not found."
         return await asyncio.to_thread(_read)
@@ -133,3 +147,27 @@ class AsyncGitTools:
             repo = git.Repo(local_path)
             return str(repo.head.commit.hexsha)
         return await asyncio.to_thread(_get_sha)
+
+    @staticmethod
+    async def search_files(local_path: str, query: str) -> str:
+        """Searches for a query string across the repository using git grep."""
+        def _search():
+            repo = git.Repo(local_path)
+            try:
+                # -n: line numbers, -I: ignore binary, -i: case insensitive, -e: pattern
+                result = repo.git.grep('-n', '-I', '-i', '-e', query)
+                
+                # Truncate if too long to avoid context overflow for LLM
+                if len(result) > 15000:
+                    lines = result.split('\n')
+                    truncated = '\n'.join(lines[:150]) + "\n... (truncated, refine your search query)"
+                    return truncated
+                return result
+            except git.exc.GitCommandError as e:
+                # git grep exits with 1 if no matches are found
+                if e.status == 1:
+                    return f"No matches found for '{query}'."
+                return f"Error executing search: {str(e)}"
+            except Exception as e:
+                return f"Error executing search: {str(e)}"
+        return await asyncio.to_thread(_search)

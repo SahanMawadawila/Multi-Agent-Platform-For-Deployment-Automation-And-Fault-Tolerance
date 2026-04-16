@@ -62,6 +62,18 @@ class UserProject(Base):
         nullable=True
     )
 
+    # deployment_plan jsonb
+    deployment_plan = Column(
+        JSONB,
+        nullable=True
+    )
+
+    # plan_status varchar (e.g. generating, ready, approved)
+    plan_status = Column(
+        String,
+        nullable=True
+    )
+
     # GitHub webhook ID for auto-sync (stored as BigInteger since GitHub IDs can be large)
     webhook_id = Column(
         BigInteger,

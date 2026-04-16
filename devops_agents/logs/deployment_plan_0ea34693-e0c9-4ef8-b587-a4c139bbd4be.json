@@ -1,0 +1,100 @@
+{
+    "plan_id": "plan_78c6edb40edd",
+    "project_id": "0ea34693-e0c9-4ef8-b587-a4c139bbd4be",
+    "build_id": "",
+    "repo_url": "https://github.com/Flow-Pilot-AI/mirror-0ea34693-e0c9-4ef8-b587-a4c139bbd4be.git",
+    "generated_at": "2026-04-15T16:29:11.992446+00:00",
+    "status": "pending_approval",
+    "is_monorepo": true,
+    "components": [
+        {
+            "name": "backend",
+            "type": "application",
+            "path": "backend",
+            "project_type": "node",
+            "framework": "express",
+            "version": "18",
+            "package_manager": "npm",
+            "role": "backend",
+            "port": 5000,
+            "build_image": true,
+            "image_name": "{project_id}-backend",
+            "health_check_path": "/",
+            "needs_build_step": false,
+            "build_command": "",
+            "run_command": "npm start",
+            "resources": {
+                "cpu_limit": "200m",
+                "memory_limit": "256Mi",
+                "replicas": 1
+            },
+            "env_variables": [],
+            "ingress": {
+                "path_prefix": "/api",
+                "expose": true
+            }
+        },
+        {
+            "name": "frontend",
+            "type": "application",
+            "path": "frontend",
+            "project_type": "node",
+            "framework": "react",
+            "version": "18",
+            "package_manager": "npm",
+            "role": "frontend",
+            "port": 3000,
+            "build_image": true,
+            "image_name": "{project_id}-frontend",
+            "health_check_path": "/",
+            "needs_build_step": false,
+            "build_command": "",
+            "run_command": "npm start",
+            "resources": {
+                "cpu_limit": "200m",
+                "memory_limit": "256Mi",
+                "replicas": 1
+            },
+            "env_variables": [
+                {
+                    "key": "REACT_APP_BACKEND_URL",
+                    "value": "http://backend:5000",
+                    "source": "override",
+                    "editable": true,
+                    "sensitive": false
+                }
+            ],
+            "ingress": {
+                "path_prefix": "/",
+                "expose": true
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from_component": "frontend",
+            "to_component": "backend",
+            "scope": "internal",
+            "protocol": "http",
+            "env_key": "REACT_APP_BACKEND_URL",
+            "resolved_value": "http://backend:5000",
+            "description": "Frontend to backend API"
+        }
+    ],
+    "ingress": {
+        "host": "app-0ea34693-e0c9-4ef8-b587-a4c139bbd4be.flowpilotai.me",
+        "tls": true,
+        "rules": [
+            {
+                "path": "/api",
+                "service": "backend",
+                "port": 5000
+            },
+            {
+                "path": "/",
+                "service": "frontend",
+                "port": 3000
+            }
+        ]
+    }
+}

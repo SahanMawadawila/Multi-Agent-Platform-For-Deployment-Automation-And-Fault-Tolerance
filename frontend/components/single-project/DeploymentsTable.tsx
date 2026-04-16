@@ -5,6 +5,7 @@ import { CheckCircle2, XCircle, Clock, ChevronLeft, ChevronRight, ExternalLink, 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -27,6 +28,7 @@ interface Deployment {
 const ITEMS_PER_PAGE = 10;
 
 export default function DeploymentsTable({ projectId }: { projectId: string }) {
+    const router = useRouter();
     const [currentPage, setCurrentPage] = useState(1);
     const [deployments, setDeployments] = useState<Deployment[]>([]);
     const [totalPages, setTotalPages] = useState(1);
@@ -124,15 +126,15 @@ export default function DeploymentsTable({ projectId }: { projectId: string }) {
 
         setCreating(true);
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/deploy`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects/${projectId}/generate-plan`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${session.backendToken}`,
                 },
             });
-            if (!res.ok) throw new Error('Failed to create deployment');
-            if (currentPage === 1) await fetchDeployments(1);
+            if (!res.ok) throw new Error('Failed to generate deployment plan');
+            router.push(`/dashboard/project/${projectId}/plan`);
         } catch (err) {
             console.error(err);
         } finally {
@@ -173,7 +175,7 @@ export default function DeploymentsTable({ projectId }: { projectId: string }) {
                     disabled={creating}
                     className="bg-violet-600 text-white hover:bg-violet-700"
                 >
-                    {creating ? 'Creating...' : 'Create New Deployment'}
+                    {creating ? 'Generating...' : 'Generate Deployment Plan'}
                 </Button>
             </div>
             {/* Table Container */}

@@ -8,7 +8,7 @@ from .deps import get_db
 from app.models import UserProject, ProjectBuild, BuildStatus
 from sqlalchemy.future import select
 from app.deps import get_current_user
-from app.utils.project_deploy_trigger import trigger_deployment_process
+from app.utils.project_deploy_trigger import trigger_deployment_process, trigger_plan_generation
 from app.dto.ProjectDTOs import ProjectDeploymentOutDTO
 # DTOs
 from app.dto.ProjectDTOs import UserProjectSimpleOutDTO, UserProjectDetailOutDTO, ProjectCreateInDTO
@@ -94,7 +94,8 @@ async def create_project(
         project_name=project_data.project_name,
         github_url=project_data.repository_url,
         env_vars=project_data.env_vars,
-        status="created"
+        status="created",
+        plan_status="generating" if project_data.trigger_deployment else None
     )
     db.add(new_project)
     await db.commit()
@@ -103,8 +104,8 @@ async def create_project(
     # TODO: Create a Hook to receive updates when pushes are made to the repository
 
     if project_data.trigger_deployment and background_tasks:
-        background_tasks.add_task(trigger_deployment_process, str(new_project.project_id))
-        print(f"Deployment process triggered in background for project {new_project.project_id}")
+        background_tasks.add_task(trigger_plan_generation, str(new_project.project_id))
+        print(f"Plan generation triggered in background for project {new_project.project_id}")
 
     return UserProjectDetailOutDTO.from_orm(new_project)
 
@@ -172,7 +173,84 @@ async def deploy_project(
         return {"message": "Deployment process started in background."}
     else:
         return {"error": "Background tasks not available."}
+
+
+"""
+POST /projects/{project_id}/generate-plan
+Trigger deployment plan generation for the specified project.
+This does NOT deploy — it generates a plan and sends it to the frontend for review.
+"""
+@router.post("/{project_id}/generate-plan")
+async def generate_plan(
+    project_id: str,
+    db: AsyncSession = Depends(get_db), 
+    user: dict = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None
+):
+    result = await db.execute(
+        select(UserProject).where(UserProject.project_id == project_id)
+        .where(UserProject.owner_id == int(user["id"]))
+    )
+    project = result.scalars().first()
+    if not project:
+        return {"error": "Project not found"}
+
+    if background_tasks:
+        background_tasks.add_task(trigger_plan_generation, str(project.project_id))
+        print(f"Plan generation triggered in background for project {project.project_id}")
+        return {"message": "Plan generation started."}
+    else:
+        return {"error": "Background tasks not available."}
     
+
+@router.get("/{project_id}/plan")
+async def get_project_plan(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get the current deployment plan for a project.
+    """
+    result = await db.execute(
+        select(UserProject)
+        .where(UserProject.project_id == project_id)
+        .where(UserProject.owner_id == int(user["id"]))
+    )
+    project = result.scalars().first()
+    if not project:
+        return {"error": "Project not found"}
+        
+    return {
+        "status": project.plan_status,
+        "plan": project.deployment_plan
+    }
+
+@router.put("/{project_id}/plan")
+async def update_project_plan(
+    project_id: str,
+    plan_data: dict,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Update the deployment plan. Used when the user edits fields in the UI.
+    """
+    result = await db.execute(
+        select(UserProject)
+        .where(UserProject.project_id == project_id)
+        .where(UserProject.owner_id == int(user["id"]))
+    )
+    project = result.scalars().first()
+    if not project:
+        return {"error": "Project not found"}
+        
+    project.deployment_plan = plan_data
+    db.add(project)
+    await db.commit()
+    
+    return {"message": "Plan updated successfully"}
+
 
 
 """

@@ -305,3 +305,64 @@ async def trigger_rollback_process(project_id: str, build_id: int, original_vers
             print(f"Rollback error: {e}")
             return
 
+
+async def trigger_plan_generation(project_id: str):
+    """
+    Trigger deployment plan generation.
+    Clones/syncs the repo (same as deploy), but sends to the 'generate-plan'
+    Kafka topic instead of 'agent-jobs'. The planning agent will analyze
+    the repo and send back a plan JSON for user review.
+    """
+    async with SessionLocal() as db:
+        print(f"[Plan] Triggering plan generation for project ID: {project_id}")
+        await asyncio.sleep(1)  # small delay before starting
+        result = await db.execute(select(UserProject).where(UserProject.project_id == project_id))
+        project = result.scalars().first()
+        if not project:
+            print(f"[Plan] Project with ID {project_id} not found.")
+            return
+
+        owner_id = project.owner_id
+        github_url = project.github_url
+        env_vars = project.env_vars or {}
+
+        project.plan_status = "generating"
+        db.add(project)
+        await db.commit()
+
+        # Mirror name is deterministic based on project_id
+        mirror_name = f"mirror-{project_id}"
+        access_token = await get_github_token(owner_id, db)
+
+        try:
+            print(f"[Plan] Cloning and syncing code for {project_id}...")
+            # Create mirror repo
+            await asyncio.to_thread(manager.create_private_mirror, mirror_name)
+            # Sync code
+            sync_result = await asyncio.to_thread(
+                manager.sync_code,
+                github_url,
+                mirror_name,
+                env_vars,
+                source_access_token=access_token,
+            )
+
+            mirror_url, commit_id = (sync_result if isinstance(sync_result, tuple) else (sync_result, None))
+            print(f"[Plan] Code synchronized for {project_id}. commit={commit_id}")
+
+            # Send to generate-plan Kafka topic
+            kafka_payload = {
+                "project_id": str(project_id),
+                "build_id": "",
+                "repo_url": f"https://github.com/{settings.GITHUB_ORG}/{mirror_name}.git",
+            }
+
+            producer = get_kafka_producer()
+            producer.send("generate-plan", value=kafka_payload)
+            producer.flush()
+            print(f"[Plan] Plan generation message sent to Kafka: {kafka_payload}")
+
+        except Exception as e:
+            print(f"[Plan] Error during plan generation for {project_id}: {e}")
+            return
+

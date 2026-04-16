@@ -1,17 +1,20 @@
 from app.kafka_terminal_producer import send_terminal_message
-from app.kafka_build_producer import send_build_event
+from app.kafka_build_producer import send_build_event, send_plan_event
 import dotenv
 import asyncio
 import json
 import time
 import os
 import shutil
+import uuid
+from datetime import datetime, timezone
 from aiokafka import AIOKafkaConsumer  
 from config.settings import settings  
 from graph import component_graph, post_processing_graph  
 from tools.git_tools import AsyncGitTools
 from agents.monorepo_detector_agent import detect_monorepo
 from agents.monorepo_analyzer_agent import analyze_monorepo
+from agents.deployment_planner_agent import run_deployment_planner
 
 dotenv.load_dotenv()
 
@@ -168,7 +171,83 @@ async def process_job(job):
     send_terminal_message(project_id, "✅ Deployment pipeline complete.\n\r")
 
 
-async def consume():
+# ====================================================================
+# Phase 1: Deployment Planning
+# ====================================================================
+async def generate_deployment_plan(job):
+    """
+    Planning-only flow: clone repo, run planner agent, send plan to frontend.
+    This does NOT trigger any deployment. The user reviews the plan first.
+    """
+    repo_url = job.get("repo_url")
+    project_id = job.get("project_id")
+    build_id = job.get("build_id", "")
+
+    print(f"[Plan] Starting deployment plan generation for {project_id}")
+
+    try:
+        repo_name_full = repo_url.split("github.com/")[-1].replace(".git", "")
+        owner, name = repo_name_full.split("/")
+        local_path = os.path.abspath(f"temp/{name}")
+
+        # Clone repo and list files
+        print(f"[Plan] Cloning repository for {project_id}...")
+        await AsyncGitTools.clone_repository(repo_url, local_path)
+        files = await AsyncGitTools.list_files(local_path)
+        print(f"[Plan] Repository cloned. Found {len(files)} files.")
+
+        # Run the deployment planner agent
+        plan = await run_deployment_planner(
+            file_list=files,
+            local_path=local_path,
+            project_id=project_id,
+            build_id=build_id,
+            repo_url=repo_url,
+        )
+
+        # Build the full plan JSON with metadata
+        plan_json = {
+            "plan_id": f"plan_{uuid.uuid4().hex[:12]}",
+            "project_id": project_id,
+            "build_id": build_id,
+            "repo_url": repo_url,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "status": "pending_approval",
+            **plan.model_dump(),
+        }
+
+        # --- Debugging: Save to local 'logs' folder ---
+        os.makedirs("logs", exist_ok=True)
+        debug_log_path = os.path.join("logs", f"deployment_plan_{project_id}.json")
+        try:
+            with open(debug_log_path, "w", encoding="utf-8") as f:
+                json.dump(plan_json, f, indent=4)
+            print(f"[Plan Debug] Saved local copy to {debug_log_path}")
+        except Exception as e:
+            print(f"[Plan Debug] Failed to save local debug JSON: {e}")
+        # ----------------------------------------------
+
+        # Send plan to frontend via Kafka
+        send_plan_event(project_id, build_id, plan_json)
+        print(f"[Plan] Deployment plan sent for review for {project_id}")
+
+    except Exception as e:
+        print(f"[Plan] Plan generation error for {project_id}: {e}")
+        import traceback
+        traceback.print_exc()
+
+    finally:
+        # Cleanup cloned repo
+        if 'local_path' in dir() and os.path.exists(local_path):
+            shutil.rmtree(local_path, ignore_errors=True)
+
+
+# ====================================================================
+# Kafka Consumers
+# ====================================================================
+
+async def consume_agent_jobs():
+    """Existing consumer for agent-jobs topic (deployment execution)."""
     consumer = AIOKafkaConsumer(
         settings.kafka_topic,
         bootstrap_servers=settings.kafka_server,
@@ -180,17 +259,52 @@ async def consume():
     )
 
     await consumer.start()
-    print("Kafka Consumer Started...")
+    print("✅ Kafka Consumer Started (agent-jobs)...")
     
     try:
         async for message in consumer:
             job = message.value
-            print(f"📥 Received Job: {job}")
+            print(f"📥 Received Agent Job: {job}")
             project_id = job.get("project_id")
             send_terminal_message(project_id, "🤖 DevOps agents received the job. Starting pipeline...\n\r")
             asyncio.create_task(process_job(job))
     finally:
         await consumer.stop()
 
+
+async def consume_plan_requests():
+    """New consumer for generate-plan topic (deployment planning)."""
+    consumer = AIOKafkaConsumer(
+        "generate-plan",
+        bootstrap_servers=settings.kafka_server,
+        group_id="plan-agent-group",
+        value_deserializer=lambda x: json.loads(x.decode('utf-8')),
+        session_timeout_ms=60000,
+        heartbeat_interval_ms=10000,
+        max_poll_interval_ms=600000,
+    )
+
+    await consumer.start()
+    print("✅ Kafka Consumer Started (generate-plan)...")
+    
+    try:
+        async for message in consumer:
+            job = message.value
+            print(f"📥 Received Plan Request: {job}")
+            project_id = job.get("project_id")
+            send_terminal_message(project_id, "🤖 Planning agent received your request...\n\r")
+            asyncio.create_task(generate_deployment_plan(job))
+    finally:
+        await consumer.stop()
+
+
+async def main():
+    """Start both consumers concurrently."""
+    await asyncio.gather(
+        consume_agent_jobs(),
+        consume_plan_requests(),
+    )
+
+
 if __name__ == "__main__":
-    asyncio.run(consume())
+    asyncio.run(main())

@@ -111,7 +111,7 @@ export default function ProjectList() {
           </>
         }
         {projects.map((project, index) => (
-          <Link href={`/dashboard/project/${project.project_id}`} key={index}
+          <Link href={`/dashboard/project/${project.project_id}/plan`} key={index}
             className="block">
             <Card
               className="p-4 rounded-lg border border-slate-800 bg-slate-900/50 hover:border-violet-500/50 transition-colors cursor-pointer flex justify-between items-center w-full"

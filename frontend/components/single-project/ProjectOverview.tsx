@@ -1,12 +1,12 @@
 'use client';
 
-import { CheckCircle, Clock, GitCommit, Play, XCircle, ExternalLink } from "lucide-react";
-import { ApplicationDiagramViewer } from "../diagram/application-diagram-viewer";
-import { Card } from "../ui/card";
-import ProjectTerminal from "./ProjectTerminal";
-import { DetailedProject } from "@/types/project";
+import Link from "next/link";
+import { CheckCircle, Clock, ExternalLink, GitCommit, XCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { useState, useEffect } from "react";
+import { Card } from "../ui/card";
+import { Button } from "../ui/button";
+import { DetailedProject } from "@/types/project";
 
 interface CurrentDeployment {
     build_id: number;
@@ -22,7 +22,6 @@ interface ProjectOverviewProps {
     project: DetailedProject;
 }
 
-// --- Status Icon Helper ---
 const getStatusIcon = (status: string) => {
     switch (status) {
         case 'success':
@@ -93,101 +92,93 @@ export default function ProjectOverview({ project }: ProjectOverviewProps) {
     }, [project.project_id, session?.backendToken]);
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-            {/* -------------------- Left Panel: Deployments History (2/3 width) -------------------- */}
-            <div className="lg:col-span-2 space-y-6">
-
-                {/* Project URL Display */}
-                {project.project_access_url && (
-                    <div className="flex items-center gap-2 p-3 bg-slate-900/30 border border-slate-800 rounded-lg">
-                        <ExternalLink size={16} className="text-violet-400" />
-                        <a
-                            href={project.project_access_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-violet-400 hover:text-violet-300 transition-colors text-sm font-medium"
-                        >
-                            {project.project_access_url}
-                        </a>
+        <div className="space-y-6">
+            <Card className="p-6 rounded-xl border border-slate-800 bg-slate-900/50">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div className="space-y-2">
+                        <h2 className="text-xl font-semibold text-white">Deployment Workflow</h2>
+                        <p className="text-sm text-slate-400">
+                            Generate a plan, review the diagram, then approve to launch the deployment console.
+                        </p>
+                        {project.plan_status && (
+                            <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium text-violet-400 bg-violet-900/30 rounded-full border border-violet-600/30">
+                                Plan status: {project.plan_status}
+                            </span>
+                        )}
                     </div>
-                )}
-
-                <ProjectTerminal />
-
-            </div>
-
-            {/* -------------------- Right Panel: Application Diagram (1/3 width) -------------------- */}
-            <div className="lg:col-span-1 space-y-6">
-                <h2 className="text-xl font-bold text-white">
-                    Application Topology
-                </h2>
-                <Card
-                    className="h-[400px] p-0 rounded-xl border border-slate-800 bg-slate-900/50 text-slate-100 shadow-lg relative overflow-hidden"
-                    data-slot="card"
-                >
-                    <ApplicationDiagramViewer projectId={project.project_id} />
-                </Card>
-
-
-                <div>
-                    <h2 className="text-xl font-bold text-white mb-4">
-                        Current Deployment
-                    </h2>
-
-                    {loading ? (
-                        <Card className="p-4 rounded-lg border border-slate-800 bg-slate-900/50">
-                            <div className="animate-pulse flex justify-between items-center">
-                                <div className="h-4 bg-slate-700 rounded w-24"></div>
-                                <div className="h-4 bg-slate-700 rounded w-16"></div>
-                            </div>
-                        </Card>
-                    ) : currentDeployment ? (
-                        <Card
-                            className="p-4 rounded-lg border border-violet-600/50 ring-1 ring-violet-600/30 bg-slate-900/50 hover:border-violet-500/50 transition-colors cursor-pointer flex justify-between items-center flex-row w-full"
-                        >
-                            {/* Left side: Version and Date */}
-                            <div className="flex items-center gap-6">
-                                {/* Version */}
-                                <div className="flex items-center gap-2">
-                                    <GitCommit size={20} className="text-slate-400" />
-                                    <div>
-                                        <p className="text-base font-semibold text-white">
-                                            v{currentDeployment.build_version}
-                                            <span className="ml-2 px-2 py-0.5 text-xs font-medium text-violet-400 bg-violet-900/30 rounded-full">Current</span>
-                                        </p>
-                                        <p className="text-xs text-slate-500 flex items-center gap-1 mt-1">
-                                            <Clock size={12} /> {formatDate(currentDeployment.build_date)}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Right side: Status and Duration */}
-                            <div className="text-right flex items-center gap-6">
-                                {/* Duration */}
-                                <div className="flex flex-col text-slate-400">
-                                    <span className="text-xs font-medium">Duration</span>
-                                    <span className="text-sm font-semibold text-white">{formatDuration(currentDeployment.duration)}</span>
-                                </div>
-
-                                {/* Status */}
-                                <div className="flex flex-col text-right">
-                                    <div className="text-sm font-medium flex items-center gap-2 justify-end">
-                                        {getStatusIcon(currentDeployment.build_status)}
-                                        <span className={currentDeployment.build_status === 'success' ? 'text-green-400' : 'text-red-400'}>
-                                            {currentDeployment.build_status}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
-                    ) : (
-                        <Card className="p-4 rounded-lg border border-slate-800 bg-slate-900/50">
-                            <p className="text-slate-400 text-sm text-center">No deployments yet</p>
-                        </Card>
-                    )}
+                    <div className="flex flex-wrap gap-3">
+                        <Button asChild className="bg-slate-800 text-white hover:bg-slate-700">
+                            <Link href={`/dashboard/project/${project.project_id}/plan`}>Review Deployment Plan</Link>
+                        </Button>
+                        <Button asChild className="bg-violet-600 text-white hover:bg-violet-700">
+                            <Link href={`/dashboard/project/${project.project_id}/deploy`}>Open Deployment Console</Link>
+                        </Button>
+                    </div>
                 </div>
+            </Card>
+
+            {project.project_access_url && (
+                <div className="flex items-center gap-2 p-3 bg-slate-900/30 border border-slate-800 rounded-lg">
+                    <ExternalLink size={16} className="text-violet-400" />
+                    <a
+                        href={project.project_access_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-violet-400 hover:text-violet-300 transition-colors text-sm font-medium"
+                    >
+                        {project.project_access_url}
+                    </a>
+                </div>
+            )}
+
+            <div>
+                <h2 className="text-xl font-bold text-white mb-4">Current Deployment</h2>
+
+                {loading ? (
+                    <Card className="p-4 rounded-lg border border-slate-800 bg-slate-900/50">
+                        <div className="animate-pulse flex justify-between items-center">
+                            <div className="h-4 bg-slate-700 rounded w-24"></div>
+                            <div className="h-4 bg-slate-700 rounded w-16"></div>
+                        </div>
+                    </Card>
+                ) : currentDeployment ? (
+                    <Card className="p-4 rounded-lg border border-violet-600/50 ring-1 ring-violet-600/30 bg-slate-900/50 flex justify-between items-center flex-row w-full">
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-2">
+                                <GitCommit size={20} className="text-slate-400" />
+                                <div>
+                                    <p className="text-base font-semibold text-white">
+                                        v{currentDeployment.build_version}
+                                        <span className="ml-2 px-2 py-0.5 text-xs font-medium text-violet-400 bg-violet-900/30 rounded-full">Current</span>
+                                    </p>
+                                    <p className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                                        <Clock size={12} /> {formatDate(currentDeployment.build_date)}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="text-right flex items-center gap-6">
+                            <div className="flex flex-col text-slate-400">
+                                <span className="text-xs font-medium">Duration</span>
+                                <span className="text-sm font-semibold text-white">{formatDuration(currentDeployment.duration)}</span>
+                            </div>
+
+                            <div className="flex flex-col text-right">
+                                <div className="text-sm font-medium flex items-center gap-2 justify-end">
+                                    {getStatusIcon(currentDeployment.build_status)}
+                                    <span className={currentDeployment.build_status === 'success' ? 'text-green-400' : 'text-red-400'}>
+                                        {currentDeployment.build_status}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+                ) : (
+                    <Card className="p-4 rounded-lg border border-slate-800 bg-slate-900/50">
+                        <p className="text-slate-400 text-sm text-center">No deployments yet</p>
+                    </Card>
+                )}
             </div>
         </div>
     );

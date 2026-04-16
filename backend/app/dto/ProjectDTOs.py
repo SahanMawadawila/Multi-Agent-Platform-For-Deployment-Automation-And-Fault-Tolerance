@@ -24,6 +24,8 @@ class UserProjectDetailOutDTO(BaseModel):
     status: Optional[str] = None
     topology_info: Optional[dict] = None
     env_vars: Optional[Dict] = None
+    deployment_plan: Optional[dict] = None
+    plan_status: Optional[str] = None
     project_access_url: Optional[str] = None
 
     class Config:

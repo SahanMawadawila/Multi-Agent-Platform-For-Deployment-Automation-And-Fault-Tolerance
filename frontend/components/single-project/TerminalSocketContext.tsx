@@ -46,8 +46,6 @@ export function TerminalSocketProvider({
                 // forcefully close existing connection
                 socketRef.current.close();
                 socketRef.current = null;
-                // setSocket(null);
-                // setIsConnected(false);
             }
 
             // get the auth cookie from document cookies
@@ -75,7 +73,10 @@ export function TerminalSocketProvider({
             socketRef.current = ws;
             setSocket(ws);
 
-            ws.onmessage = onmessage;
+            ws.onmessage = (event: MessageEvent) => {
+                // Regular terminal message — forward to terminal
+                onmessage(event);
+            };
             ws.onopen = () => setIsConnected(true);
             ws.onclose = () => {
                 setIsConnected(false);

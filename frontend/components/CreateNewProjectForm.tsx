@@ -191,7 +191,7 @@ export default function CreateNewProjectForm() {
 
       const data = await response.json();
       // Redirect to the new project page
-      window.location.href = `/dashboard/project/${data.project_id}`;
+      window.location.href = `/dashboard/project/${data.project_id}/plan`;
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to create project."
@@ -297,10 +297,10 @@ export default function CreateNewProjectForm() {
       >
         {submitting ? (
           <span className="flex items-center justify-center gap-2">
-            <Zap className="animate-spin" size={18} /> Deploying...
+            <Zap className="animate-spin" size={18} /> Analyzing...
           </span>
         ) : (
-          "Deploy"
+          "Generate Deployment Plan"
         )}
       </Button>
       {error && <div className="text-red-400 text-xs mt-2">{error}</div>}

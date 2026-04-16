@@ -25,18 +25,18 @@ app.include_router(projects.router, prefix="/api/projects")
 app.include_router(k8s_diagram.router, prefix="/api/k8s")
 app.include_router(github.router, prefix="/api/github")
 app.include_router(project_terminal.router, prefix="/ws/terminal")
-from app.utils.kafka_project_build_consumer import consumer_instance
 
+from app.utils.kafka_event_consumer import consumer_instance
 
 @app.on_event("startup")
 async def _start_background_consumers():
     # Start Kafka consumer for project build events
     asyncio.create_task(consumer_instance.start())
 
-
 @app.on_event("shutdown")
 async def _stop_background_consumers():
     await consumer_instance.stop()
+
 # @app.get("/")
 # async def root():
 #     return {"message": "Hello Worlds"}

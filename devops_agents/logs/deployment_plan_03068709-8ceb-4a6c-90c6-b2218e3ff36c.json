@@ -1,0 +1,110 @@
+{
+    "plan_id": "plan_758aa27df51d",
+    "project_id": "03068709-8ceb-4a6c-90c6-b2218e3ff36c",
+    "build_id": "",
+    "repo_url": "https://github.com/Flow-Pilot-AI/mirror-03068709-8ceb-4a6c-90c6-b2218e3ff36c.git",
+    "generated_at": "2026-04-16T02:32:35.197097+00:00",
+    "status": "pending_approval",
+    "is_monorepo": false,
+    "components": [
+        {
+            "name": "test-database",
+            "type": "application",
+            "path": ".",
+            "project_type": "node",
+            "framework": "express",
+            "version": "18",
+            "package_manager": "npm",
+            "role": "backend",
+            "port": 3050,
+            "build_image": true,
+            "image_name": "03068709-8ceb-4a6c-90c6-b2218e3ff36c-backend",
+            "health_check_path": "/api/health",
+            "needs_build_step": false,
+            "build_command": "",
+            "run_command": "npm start",
+            "resources": {
+                "cpu_limit": "200m",
+                "memory_limit": "256Mi",
+                "replicas": 1
+            },
+            "env_variables": [
+                {
+                    "key": "DATABASE_URL",
+                    "value": "postgresql://postgres:sahan123@localhost:5432/testdb",
+                    "source": "detected",
+                    "editable": true,
+                    "sensitive": true
+                },
+                {
+                    "key": "DB_HOST",
+                    "value": "localhost",
+                    "source": "detected",
+                    "editable": true,
+                    "sensitive": false
+                },
+                {
+                    "key": "DB_PORT",
+                    "value": "5432",
+                    "source": "detected",
+                    "editable": true,
+                    "sensitive": false
+                },
+                {
+                    "key": "DB_USER",
+                    "value": "postgres",
+                    "source": "detected",
+                    "editable": true,
+                    "sensitive": false
+                },
+                {
+                    "key": "DB_PASSWORD",
+                    "value": "sahan123",
+                    "source": "detected",
+                    "editable": true,
+                    "sensitive": true
+                },
+                {
+                    "key": "DB_NAME",
+                    "value": "testdb",
+                    "source": "detected",
+                    "editable": true,
+                    "sensitive": false
+                },
+                {
+                    "key": "PORT",
+                    "value": "3050",
+                    "source": "detected",
+                    "editable": true,
+                    "sensitive": false
+                }
+            ],
+            "ingress": {
+                "path_prefix": "/",
+                "expose": true
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from_component": "application",
+            "to_component": "postgresql",
+            "scope": "external",
+            "protocol": "postgresql",
+            "env_key": "DATABASE_URL",
+            "resolved_value": "postgresql://postgres:sahan123@localhost:5432/testdb",
+            "description": "Primary PostgreSQL database connection for the application"
+        }
+    ],
+    "ingress": {
+        "host": "app-03068709-8ceb-4a6c-90c6-b2218e3ff36c.flowpilotai.me",
+        "tls": true,
+        "rules": [
+            {
+                "path": "/",
+                "service": "test-database",
+                "port": 3050
+            }
+        ]
+    }
+}
