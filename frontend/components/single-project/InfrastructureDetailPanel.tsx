@@ -45,7 +45,13 @@ export function InfrastructureDetailPanel({
   const addEnv = () => {
     const newEnvs = [
       ...(localComp.env_variables || []),
-      { key: "", value: "", source: "override", editable: true, sensitive: false },
+      {
+        key: "",
+        value: "",
+        source: "override",
+        editable: true,
+        sensitive: false,
+      },
     ];
     handleFieldChange("env_variables", newEnvs);
   };
@@ -59,7 +65,12 @@ export function InfrastructureDetailPanel({
   const addCredential = () => {
     const nextCreds = { ...(localComp.credentials || {}) };
     const key = `CREDENTIAL_${Object.keys(nextCreds).length + 1}`;
-    nextCreds[key] = { value: "", source: "override", editable: true, sensitive: false };
+    nextCreds[key] = {
+      value: "",
+      source: "override",
+      editable: true,
+      sensitive: false,
+    };
     handleFieldChange("credentials", nextCreds);
   };
 
@@ -80,7 +91,9 @@ export function InfrastructureDetailPanel({
 
       <div className="flex-grow p-5 space-y-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
         <div className="space-y-4">
-          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">General</h4>
+          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">
+            General
+          </h4>
           <div className="space-y-3">
             <div>
               <label className="text-xs text-slate-400 mb-1 block">Name</label>
@@ -94,7 +107,9 @@ export function InfrastructureDetailPanel({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Scope</label>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Scope
+                </label>
                 <select
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                   value={localComp.scope || "project"}
@@ -107,7 +122,9 @@ export function InfrastructureDetailPanel({
                 </select>
               </div>
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Owner App</label>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Owner App
+                </label>
                 <input
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                   value={localComp.owner_app || ""}
@@ -119,7 +136,9 @@ export function InfrastructureDetailPanel({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Category</label>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Category
+                </label>
                 <input
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                   value={localComp.category || ""}
@@ -129,7 +148,9 @@ export function InfrastructureDetailPanel({
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Port</label>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Port
+                </label>
                 <input
                   type="number"
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
@@ -155,7 +176,9 @@ export function InfrastructureDetailPanel({
 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">Credentials</h4>
+            <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">
+              Credentials
+            </h4>
             <button
               onClick={addCredential}
               className="text-violet-400 hover:text-violet-300 text-xs flex items-center gap-1"
@@ -164,34 +187,37 @@ export function InfrastructureDetailPanel({
             </button>
           </div>
           <div className="space-y-2">
-            {Object.entries(localComp.credentials || {}).map(([key, cred]: any) => (
-              <div key={key} className="flex gap-2 items-start">
-                <div className="flex-grow space-y-2">
-                  <input
-                    className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-xs h-8 px-2 font-mono"
-                    value={key}
-                    readOnly
-                  />
-                  <input
-                    placeholder="Value"
-                    type="text"
-                    className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-xs h-8 px-2 font-mono"
-                    value={cred?.value || ""}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      handleCredentialChange(key, e.target.value)
-                    }
-                  />
+            {Object.entries(localComp.credentials || {}).map(
+              ([key, cred]: any) => (
+                <div key={key} className="flex gap-2 items-start">
+                  <div className="flex-grow space-y-2">
+                    <input
+                      className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-xs h-8 px-2 font-mono"
+                      value={key}
+                      readOnly
+                    />
+                    <input
+                      placeholder="Value"
+                      type="text"
+                      className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-xs h-8 px-2 font-mono"
+                      value={cred?.value || ""}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        handleCredentialChange(key, e.target.value)
+                      }
+                    />
+                  </div>
+                  <button
+                    onClick={() => removeCredential(key)}
+                    className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded"
+                    title="Remove"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
-                <button
-                  onClick={() => removeCredential(key)}
-                  className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded"
-                  title="Remove"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-            {(!localComp.credentials || Object.keys(localComp.credentials).length === 0) && (
+              ),
+            )}
+            {(!localComp.credentials ||
+              Object.keys(localComp.credentials).length === 0) && (
               <p className="text-xs text-slate-500 italic text-center py-2">
                 No credentials.
               </p>
@@ -201,7 +227,9 @@ export function InfrastructureDetailPanel({
 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">Environment</h4>
+            <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">
+              Environment
+            </h4>
             <button
               onClick={addEnv}
               className="text-violet-400 hover:text-violet-300 text-xs flex items-center gap-1"
@@ -240,7 +268,8 @@ export function InfrastructureDetailPanel({
                 </button>
               </div>
             ))}
-            {(!localComp.env_variables || localComp.env_variables.length === 0) && (
+            {(!localComp.env_variables ||
+              localComp.env_variables.length === 0) && (
               <p className="text-xs text-slate-500 italic text-center py-2">
                 No environment variables.
               </p>
@@ -249,10 +278,14 @@ export function InfrastructureDetailPanel({
         </div>
 
         <div className="space-y-4">
-          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">Resources</h4>
+          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">
+            Resources
+          </h4>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">CPU Limit</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                CPU Limit
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                 value={localComp.resources?.cpu_limit || ""}
@@ -265,20 +298,27 @@ export function InfrastructureDetailPanel({
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Memory</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Memory
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                 value={localComp.resources?.memory_limit || ""}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setLocalComp((prev: any) => ({
                     ...prev,
-                    resources: { ...prev.resources, memory_limit: e.target.value },
+                    resources: {
+                      ...prev.resources,
+                      memory_limit: e.target.value,
+                    },
                   }))
                 }
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Replicas</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Replicas
+              </label>
               <input
                 type="number"
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
@@ -286,7 +326,10 @@ export function InfrastructureDetailPanel({
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setLocalComp((prev: any) => ({
                     ...prev,
-                    resources: { ...prev.resources, replicas: Number(e.target.value) },
+                    resources: {
+                      ...prev.resources,
+                      replicas: Number(e.target.value),
+                    },
                   }))
                 }
               />
@@ -295,7 +338,9 @@ export function InfrastructureDetailPanel({
         </div>
 
         <div className="space-y-4">
-          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">Storage</h4>
+          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">
+            Storage
+          </h4>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-slate-400 mb-1 block">Size</label>
@@ -311,7 +356,9 @@ export function InfrastructureDetailPanel({
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Storage Class</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Storage Class
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                 value={localComp.storage?.storage_class || ""}

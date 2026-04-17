@@ -41,10 +41,14 @@ export function ConnectionDetailPanel({
 
       <div className="flex-grow p-5 space-y-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
         <div className="space-y-4">
-          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">General</h4>
+          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">
+            General
+          </h4>
           <div className="space-y-3">
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">From Component</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                From Component
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                 value={localConn.from_component || ""}
@@ -54,7 +58,9 @@ export function ConnectionDetailPanel({
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">To Component</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                To Component
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                 value={localConn.to_component || ""}
@@ -65,7 +71,9 @@ export function ConnectionDetailPanel({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Scope</label>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Scope
+                </label>
                 <select
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                   value={localConn.scope || "internal"}
@@ -78,7 +86,9 @@ export function ConnectionDetailPanel({
                 </select>
               </div>
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Env Key</label>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Env Key
+                </label>
                 <input
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                   value={localConn.env_key || ""}
@@ -89,7 +99,9 @@ export function ConnectionDetailPanel({
               </div>
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Resolved Value</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Resolved Value
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2 font-mono"
                 value={localConn.resolved_value || ""}
