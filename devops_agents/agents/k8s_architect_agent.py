@@ -33,7 +33,7 @@ async def k8s_architect_agent(state):
     send_terminal_message(project_id, "👷 Generating K8s manifests...\n\r", component_name)
 
     # Build app name
-    app_name = f"app-{project_id}-{component_name}" if component_name else f"app-{project_id}"
+    app_name = component_name or "app"
     namespace = project_id
 
     env_list = component_spec.get("env_variables", []) if component_spec else []

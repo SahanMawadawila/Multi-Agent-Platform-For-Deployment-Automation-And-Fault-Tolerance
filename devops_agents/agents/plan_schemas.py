@@ -54,7 +54,7 @@ class IngressSpec(BaseModel):
 
 class ApplicationComponent(BaseModel):
     """A buildable application component (goes through Dockerfile → CI/CD → ECR → K8s)."""
-    name: str = Field(..., description="Component name (e.g., 'backend', 'frontend', 'auth-service')")
+    name: str = Field(..., description="Component name. Use 'app' for single-app projects.")
     type: Literal["application"] = Field("application", description="Component type")
     path: str = Field(".", description="Path relative to repo root (e.g., '.', 'backend', 'services/auth')")
     project_type: str = Field(..., description="Project type: 'node', 'springboot', 'python'")

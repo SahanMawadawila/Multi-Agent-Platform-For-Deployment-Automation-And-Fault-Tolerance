@@ -44,7 +44,8 @@ async def infra_deployment_agent(state: dict):
     """
     project_id = state.get("project_id", "")
     component = state.get("infra_component") or {}
-    service_name = component.get("name")
+    raw_name = component.get("name")
+    service_name = raw_name
 
     if not service_name:
         send_terminal_message(project_id, "❌ Missing infrastructure component name. Skipping.\n\r")

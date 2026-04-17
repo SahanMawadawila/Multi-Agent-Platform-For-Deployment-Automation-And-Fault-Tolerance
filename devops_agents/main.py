@@ -83,7 +83,7 @@ async def process_job(job):
         tasks = []
         comp_specs = []
         for comp in app_components:
-            comp_name = comp.get("name")
+            comp_name = comp.get("name") or "app"
             comp_local_path = os.path.abspath(f"temp/{name}-{comp_name or 'app'}")
             await AsyncGitTools.clone_repository(repo_url, comp_local_path)
             files = await AsyncGitTools.list_files(comp_local_path)
@@ -92,7 +92,7 @@ async def process_job(job):
             if component_path in (".", "./", ""):
                 component_path = None
 
-            component_name = comp_name if is_multi_project else None
+            component_name = comp_name
 
             comp_state = {
                 "project_id": project_id,
@@ -129,7 +129,7 @@ async def process_job(job):
                 return
 
             comp_name = comp.get("name")
-            app_name = result.get("k8s_app_name", f"app-{project_id}-{comp_name}" if comp_name else f"app-{project_id}")
+            app_name = result.get("k8s_app_name", comp_name or "app")
             ingress = comp.get("ingress") or {}
             if ingress.get("expose", True):
                 pp_components.append({

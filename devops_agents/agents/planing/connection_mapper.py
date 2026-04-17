@@ -21,7 +21,9 @@ Rules:
 - Use scope=internal only when the target service is intended to run in-cluster.
 - Use scope=external for third-party services and managed databases.
 - Do NOT invent infrastructure components.
-- Use resolved_value from config when available; for internal connections, use the in-cluster service name as the host.
+- Local env values may reference different names (localhost, docker-compose service names, etc.).
+    Use the provided application/infra component names to rewrite internal connection targets and resolved_value
+    so they match the K8s service names exactly.
 - If a required env key is missing for a connection, add a descriptive entry to errors.
 - Call ConnectionExtractionResult exactly once.
 """
