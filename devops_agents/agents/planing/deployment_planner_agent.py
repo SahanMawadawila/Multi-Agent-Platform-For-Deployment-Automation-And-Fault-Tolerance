@@ -19,6 +19,7 @@ from agents.planing.component_extractor import run_component_extractor
 from agents.planing.infra_extractor import run_infra_extractor
 from agents.planing.connection_mapper import run_connection_mapper
 from tools.git_tools import AsyncGitTools
+from config.settings import settings
 
 # File-based logger for agent traceability (not sent to frontend terminal)
 os.makedirs("logs", exist_ok=True)
@@ -256,7 +257,7 @@ async def run_deployment_planner(
         ]
         rules.sort(key=lambda rule: (rule.path == "/", rule.path))
         ingress = IngressConfig(
-            host=f"app-{project_id}.flowpilotai.me",
+            host=f"app-{project_id}.{settings.domain_name}",
             tls=True,
             rules=rules,
         )
