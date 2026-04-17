@@ -45,7 +45,13 @@ export function ApplicationDetailPanel({
   const addEnv = () => {
     const newEnvs = [
       ...(localComp.env_variables || []),
-      { key: "", value: "", source: "override", editable: true, sensitive: false },
+      {
+        key: "",
+        value: "",
+        source: "override",
+        editable: true,
+        sensitive: false,
+      },
     ];
     handleFieldChange("env_variables", newEnvs);
   };
@@ -61,7 +67,9 @@ export function ApplicationDetailPanel({
 
       <div className="flex-grow p-5 space-y-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
         <div className="space-y-4">
-          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">General</h4>
+          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">
+            General
+          </h4>
           <div className="space-y-3">
             <div>
               <label className="text-xs text-slate-400 mb-1 block">Name</label>
@@ -85,7 +93,9 @@ export function ApplicationDetailPanel({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Project Type</label>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Project Type
+                </label>
                 <input
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                   value={localComp.project_type || ""}
@@ -95,7 +105,9 @@ export function ApplicationDetailPanel({
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Framework</label>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Framework
+                </label>
                 <input
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                   value={localComp.framework || ""}
@@ -107,7 +119,9 @@ export function ApplicationDetailPanel({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Runtime Version</label>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Runtime Version
+                </label>
                 <input
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                   value={localComp.version || ""}
@@ -117,7 +131,9 @@ export function ApplicationDetailPanel({
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Package Manager</label>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Package Manager
+                </label>
                 <input
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                   value={localComp.package_manager || ""}
@@ -129,7 +145,9 @@ export function ApplicationDetailPanel({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Role</label>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Role
+                </label>
                 <input
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                   value={localComp.role || ""}
@@ -139,7 +157,9 @@ export function ApplicationDetailPanel({
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Port</label>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Port
+                </label>
                 <input
                   type="number"
                   className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
@@ -151,7 +171,9 @@ export function ApplicationDetailPanel({
               </div>
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Image Name</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Image Name
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                 value={localComp.image_name || ""}
@@ -161,7 +183,9 @@ export function ApplicationDetailPanel({
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Health Check Path</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Health Check Path
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                 value={localComp.health_check_path || ""}
@@ -171,7 +195,9 @@ export function ApplicationDetailPanel({
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Build Command</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Build Command
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                 value={localComp.build_command || ""}
@@ -181,7 +207,9 @@ export function ApplicationDetailPanel({
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Run Command</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Run Command
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                 value={localComp.run_command || ""}
@@ -195,7 +223,9 @@ export function ApplicationDetailPanel({
 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">Environment</h4>
+            <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">
+              Environment
+            </h4>
             <button
               onClick={addEnv}
               className="text-violet-400 hover:text-violet-300 text-xs flex items-center gap-1"
@@ -234,7 +264,8 @@ export function ApplicationDetailPanel({
                 </button>
               </div>
             ))}
-            {(!localComp.env_variables || localComp.env_variables.length === 0) && (
+            {(!localComp.env_variables ||
+              localComp.env_variables.length === 0) && (
               <p className="text-xs text-slate-500 italic text-center py-2">
                 No environment variables.
               </p>
@@ -243,10 +274,14 @@ export function ApplicationDetailPanel({
         </div>
 
         <div className="space-y-4">
-          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">Resources</h4>
+          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">
+            Resources
+          </h4>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">CPU Limit</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                CPU Limit
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                 value={localComp.resources?.cpu_limit || ""}
@@ -259,20 +294,27 @@ export function ApplicationDetailPanel({
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Memory</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Memory
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                 value={localComp.resources?.memory_limit || ""}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setLocalComp((prev: any) => ({
                     ...prev,
-                    resources: { ...prev.resources, memory_limit: e.target.value },
+                    resources: {
+                      ...prev.resources,
+                      memory_limit: e.target.value,
+                    },
                   }))
                 }
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Replicas</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Replicas
+              </label>
               <input
                 type="number"
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
@@ -280,7 +322,10 @@ export function ApplicationDetailPanel({
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setLocalComp((prev: any) => ({
                     ...prev,
-                    resources: { ...prev.resources, replicas: Number(e.target.value) },
+                    resources: {
+                      ...prev.resources,
+                      replicas: Number(e.target.value),
+                    },
                   }))
                 }
               />
@@ -289,7 +334,9 @@ export function ApplicationDetailPanel({
         </div>
 
         <div className="space-y-4">
-          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">Ingress</h4>
+          <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">
+            Ingress
+          </h4>
           <div className="space-y-3">
             <label className="flex items-center gap-2 text-sm text-slate-300">
               <input
@@ -305,7 +352,9 @@ export function ApplicationDetailPanel({
               Expose via ingress
             </label>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Path Prefix</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Path Prefix
+              </label>
               <input
                 className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
                 value={localComp.ingress?.path_prefix || "/"}
