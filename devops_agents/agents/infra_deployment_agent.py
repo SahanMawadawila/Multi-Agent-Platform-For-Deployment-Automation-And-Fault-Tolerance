@@ -30,11 +30,13 @@ async def infra_deployment_agent(state: dict):
     system_prompt = (
         "You are a Kubernetes expert. Generate only valid Kubernetes YAML. "
         "Output MUST be plain YAML, no markdown or explanations. "
-        "Use the provided infra component fields as the only source of truth."
+        "Use the provided infra component fields as the only source of truth. "
+        "Namespace MUST be exactly the provided namespace value."
     )
 
     user_payload = {
         "project_id": project_id,
+        "namespace": project_id,
         "infra_component": component,
     }
 
