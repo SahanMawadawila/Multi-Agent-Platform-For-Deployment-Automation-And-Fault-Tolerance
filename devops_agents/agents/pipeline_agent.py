@@ -136,7 +136,8 @@ async def pipeline_writing_agent(state: AgentState):
     local_path = state["local_path"]
     repo_owner = state["repo_owner"]
     repo_name = state["repo_name"]
-    component_name = state.get("component_name")  # None for single project
+    component = state.get("component") or {}
+    component_name = component.get("name")
     branch_name = state.get("branch_name")  # Optional
     
     send_terminal_message(project_id, "🚀 Starting CI/CD pipeline generation...\n\r", component_name)
@@ -149,11 +150,8 @@ async def pipeline_writing_agent(state: AgentState):
         aws_secret_access_key=settings.aws_secret_key
     )
     
-    # ECR naming: project_id for single project, project_id-{name} for multi-project
-    if component_name:
-        ecr_repo_name = f"{project_id}-{component_name}"
-    else:
-        ecr_repo_name = project_id
+    # ECR naming: prefer plan image_name, fallback to project_id
+    ecr_repo_name = component.get("image_name") or project_id
     
     send_terminal_message(project_id, f"☁️ Setting up AWS ECR repository: {ecr_repo_name}...\n\r", component_name)
     ensure_ecr_repo(ecr_client, ecr_repo_name)
@@ -171,7 +169,9 @@ async def pipeline_writing_agent(state: AgentState):
     
     # Generate and push workflow
     send_terminal_message(project_id, f"📝 Generating GitHub Actions workflow (version={build_version})...\n\r", component_name)
-    component_path = state.get("component_path")  # None for single project
+    component_path = component.get("path")
+    if component_path in (".", "./", ""):
+        component_path = None
     workflow_content = generate_workflow_content(settings.aws_region, ecr_repo_name, build_version, branch_name, component_path)
 
     workflow_name = "ci.yml"

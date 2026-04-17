@@ -22,7 +22,7 @@ async def deployment_monitor_agent(state):
     all_healthy = True
     
     for comp in components:
-        app_name = comp["app_name"]
+        app_name = comp.get("name") or "app"
         comp_name = comp.get("name", "")
         health_path = comp.get("health_check_path", "/")
         

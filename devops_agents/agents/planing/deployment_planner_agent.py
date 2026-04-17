@@ -56,7 +56,7 @@ async def read_file(
         logger.info(f"[{project_id}] 📖 Reading {file_path} (Lines {start_line}-{end_line})")
     else:
         logger.info(f"[{project_id}] 📖 Reading {file_path}")
-        
+
     result = await AsyncGitTools.read_file(local_path, file_path, start_line, end_line)
     return result
 
@@ -139,6 +139,7 @@ def _build_file_list_str(file_list: list) -> str:
         return file_list_str
 
     return "\n".join(f"- {file}" for file in file_list)
+
 
 # ============== AGENT ==============
 
@@ -241,8 +242,6 @@ async def run_deployment_planner(
                     _update_component_env(component, connection.env_key, connection.resolved_value)
                     break
 
-    is_monorepo = len(app_components) > 1 or len({component.path for component in app_components}) > 1
-
     logger.info(f"[{project_id}] ✅ Planning complete.")
     ingress = None
     if app_components:
@@ -263,7 +262,6 @@ async def run_deployment_planner(
         )
 
     return DeploymentPlan(
-        is_monorepo=is_monorepo,
         components=[*app_components, *infra_components],
         connections=connections,
         ingress=ingress or IngressConfig(host=f"app-{project_id}.flowpilotai.me", tls=True, rules=[]),

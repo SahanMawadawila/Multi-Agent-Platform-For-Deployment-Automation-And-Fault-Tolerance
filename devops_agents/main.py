@@ -12,7 +12,7 @@ from aiokafka import AIOKafkaConsumer
 from config.settings import settings  
 from graph import component_graph, post_processing_graph  
 from tools.git_tools import AsyncGitTools
-from agents.deployment_planner_agent import run_deployment_planner
+from agents.planing.deployment_planner_agent import run_deployment_planner
 from agents.infra_deployment_agent import infra_deployment_agent
 
 dotenv.load_dotenv()
@@ -63,82 +63,63 @@ async def process_job(job):
     components = deployment_plan.get("components", [])
     app_components = [comp for comp in components if comp.get("type") == "application"]
     infra_components = [comp for comp in components if comp.get("type") == "infrastructure"]
-    is_multi_project = deployment_plan.get("is_monorepo") or len(app_components) > 1
 
-    # Build the components list for post-processing
-    pp_components = []
 
-    if infra_components:
-        infra_tasks = []
-        for infra in infra_components:
-            infra_tasks.append(infra_deployment_agent({
-                "project_id": project_id,
-                "infra_component": infra,
-            }))
-        await asyncio.gather(*infra_tasks)
+    infra_tasks = [
+        infra_deployment_agent({
+            "project_id": project_id,
+            "infra_component": infra,
+        })
+        for infra in infra_components
+    ]
+
+    async def _run_app_component(comp: dict):
+        comp_name = comp.get("name") or "app"
+        comp_local_path = os.path.abspath(f"temp/{name}-{comp_name}")
+        await AsyncGitTools.clone_repository(repo_url, comp_local_path)
+        files = await AsyncGitTools.list_files(comp_local_path)
+
+        comp_state = {
+            "project_id": project_id,
+            "build_id": build_id,
+            "build_version": build_version,
+            "local_path": comp_local_path,
+            "file_list": files,
+            "repo_owner": owner,
+            "repo_name": name,
+            "messages": [],
+            "retry_count": 0,
+            "error_fixing_plan": None,
+            "error_fixing_messages": [],
+            "current_step_index": 0,
+            "analysis_results": None,
+            "start_time": start_time,
+            "component": comp,
+        }
+        return await component_graph.ainvoke(comp_state, config=config)
+
+    app_tasks = []
+    results = []
+    comp_specs = []
+    for comp in app_components:
+        comp_specs.append(comp)
+        app_tasks.append(_run_app_component(comp))
 
     if app_components:
         send_terminal_message(project_id, f"🔀 Deploying {len(app_components)} application components in parallel...\n\r")
 
-        tasks = []
-        comp_specs = []
-        for comp in app_components:
-            comp_name = comp.get("name") or "app"
-            comp_local_path = os.path.abspath(f"temp/{name}-{comp_name or 'app'}")
-            await AsyncGitTools.clone_repository(repo_url, comp_local_path)
-            files = await AsyncGitTools.list_files(comp_local_path)
+    all_tasks = infra_tasks + app_tasks
+    all_results = await asyncio.gather(*all_tasks)
 
-            component_path = comp.get("path", ".")
-            if component_path in (".", "./", ""):
-                component_path = None
+    #slice out application results
+    results = all_results[len(infra_tasks):]
 
-            component_name = comp_name
-
-            comp_state = {
-                "project_id": project_id,
-                "build_id": build_id,
-                "build_version": build_version,
-                "local_path": comp_local_path,
-                "file_list": files,
-                "repo_owner": owner,
-                "repo_name": name,
-                "messages": [],
-                "retry_count": 0,
-                "error_fixing_plan": None,
-                "current_step_index": 0,
-                "analysis_results": None,
-                "start_time": start_time,
-                "component_name": component_name,
-                "component_path": component_path,
-                "component_spec": comp,
-                "is_multi_project": bool(component_name),
-                "role": comp.get("role", "backend"),
-                "api_path_prefix": comp.get("ingress", {}).get("path_prefix", "/"),
-            }
-            comp_specs.append(comp)
-            tasks.append(component_graph.ainvoke(comp_state, config=config))
-
-        results = await asyncio.gather(*tasks)
-
-        for comp, result in zip(comp_specs, results):
-            if result.get("build_status") == "failed":
-                send_build_event(project_id, build_id, "failed", details={
-                    "error": result.get("build_error_logs", "Build failed"),
-                    "duration": int(time.time() - start_time),
-                })
-                return
-
-            comp_name = comp.get("name")
-            app_name = result.get("k8s_app_name", comp_name or "app")
-            ingress = comp.get("ingress") or {}
-            if ingress.get("expose", True):
-                pp_components.append({
-                    "name": comp_name,
-                    "app_name": app_name,
-                    "api_path_prefix": ingress.get("path_prefix", "/"),
-                    "port": comp.get("port", 3000),
-                    "health_check_path": comp.get("health_check_path", "/"),
-                })
+    for comp, result in zip(comp_specs, results):
+        if result.get("build_status") == "failed":
+            send_build_event(project_id, build_id, "failed", details={
+                "error": result.get("build_error_logs", "Build failed"),
+                "duration": int(time.time() - start_time),
+            })
     
     # ==========================================
     # POST-PROCESSING GRAPH (runs once for both)
@@ -149,8 +130,7 @@ async def process_job(job):
         "project_id": project_id,
         "build_id": build_id,
         "start_time": start_time,
-        "is_multi_project": is_multi_project,
-        "components": pp_components,
+        "components": app_components,
         "ingress_config": deployment_plan.get("ingress"),
     }
     

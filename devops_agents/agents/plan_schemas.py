@@ -88,6 +88,10 @@ class InfrastructureComponent(BaseModel):
     env_variables: List[EnvVariable] = Field(default_factory=list, description="Additional env vars for this service")
     storage: Optional[StorageSpec] = Field(default_factory=StorageSpec, description="Persistent storage config")
     resources: ResourceSpec = Field(default_factory=ResourceSpec)
+    manifest_yaml: Optional[str] = Field(
+        None,
+        description="Optional any snippet of yaml manifest found in the codebase for this infrastructure component"
+    )
 
 
 class Connection(BaseModel):
@@ -118,7 +122,6 @@ class DeploymentPlan(BaseModel):
     Complete deployment plan for a project.
     This is the top-level schema returned by the planning agent.
     """
-    is_monorepo: bool = Field(..., description="Whether the repository contains multiple deployable components")
     components: List[Union[ApplicationComponent, InfrastructureComponent]] = Field(
         ..., description="All components to deploy (applications + infrastructure)"
     )

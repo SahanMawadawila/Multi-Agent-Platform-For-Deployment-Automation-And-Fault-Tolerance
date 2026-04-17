@@ -9,22 +9,18 @@ async def k8s_architect_agent(state):
     K8s Architect Agent — pure manifest generation.
     Generates Deployment + Service YAML only. No kubectl, no AWS calls.
     
-    Paths:
-      - Single project: temp/gitops_{project_id}/app/
-      - Multi-project:  temp/gitops_{project_id}/app/{component_name}/
+        Paths:
+            - temp/gitops_{project_id}/app/{app_name}/
     
     ECR pull secret, Ingress, GitOps push, ArgoCD → post-processing graph.
     """
     project_id = state.get("project_id", "")
-    analysis = state.get("analyzed_repository_details")
-    component_spec = state.get("component_spec") or {}
-    component_name = state.get("component_name")
-    is_multi_project = state.get("is_multi_project", False)
-    overridden_envs = state.get("overridden_envs", {})
+    component = state.get("component") or {}
+    component_name = component.get("name")
     
-    if not analysis and not component_spec:
+    if not component:
         send_terminal_message(project_id, "❌ Missing component details. Skipping K8s Architect.\n\r", component_name)
-        return {"build_status": "k8s_failed_no_component_spec"}
+        return {"build_status": "k8s_failed_no_component"}
         
     if not state.get("image_url"):
         send_terminal_message(project_id, "❌ No image URL found. Pipeline agent failed to provide image.\n\r", component_name)
@@ -36,15 +32,13 @@ async def k8s_architect_agent(state):
     app_name = component_name or "app"
     namespace = project_id
 
-    env_list = component_spec.get("env_variables", []) if component_spec else []
+    env_list = component.get("env_variables", []) if component else []
     env_vars = {env.get("key"): str(env.get("value", "")) for env in env_list if env.get("key")}
 
-    resources = component_spec.get("resources", {}) if component_spec else {}
+    resources = component.get("resources", {}) if component else {}
 
-    port = component_spec.get("port") if component_spec else getattr(analysis, "port", None)
-    health_path = component_spec.get("health_check_path") if component_spec else getattr(analysis, "health_check_path", "/")
-    if port is None and analysis:
-        port = analysis.port
+    port = component.get("port")
+    health_path = component.get("health_check_path", "/")
 
     # Template data
     data = {
@@ -53,13 +47,13 @@ async def k8s_architect_agent(state):
         "replicas": 1,
         "image_url": state.get("image_url"),
         "port": port or 3000,
-        "memory_limit": resources.get("memory_limit") or getattr(analysis, "memory_limit", "256Mi"),
-        "cpu_limit": resources.get("cpu_limit") or getattr(analysis, "cpu_limit", "200m"),
+        "memory_limit": resources.get("memory_limit", "256Mi"),
+        "cpu_limit": resources.get("cpu_limit", "200m"),
         "health_check_path": health_path or "/",
         "image_pull_secret": "regcred",
         "domain_name": settings.domain_name,
         "acm_certificate_arn": settings.acm_certificate_arn,
-        "env_vars": overridden_envs or env_vars or {},
+        "env_vars": env_vars or {},
     }
 
     # Generate Deployment + Service YAML
@@ -68,14 +62,8 @@ async def k8s_architect_agent(state):
     templates_dir = os.path.join(base_dir, "templates", "k8s")
     env = Environment(loader=FileSystemLoader(templates_dir))
     
-    # Determine output path:
-    #   Single:  temp/gitops_{project_id}/app/
-    #   Multi:   temp/gitops_{project_id}/app/{component_name}/
     gitops_base = os.path.join(os.getcwd(), "temp", f"gitops_{project_id}")
-    if is_multi_project and component_name:
-        manifests_path = os.path.join(gitops_base, "app", component_name)
-    else:
-        manifests_path = os.path.join(gitops_base, "app")
+    manifests_path = os.path.join(gitops_base, "app", app_name)
     os.makedirs(manifests_path, exist_ok=True)
     
     for template_file in ["deployment.j2", "service.j2"]:

@@ -12,7 +12,6 @@ class AgentState(TypedDict):
     repo_owner: str
     repo_name: str
     messages: Annotated[List, add_messages] 
-    analyzed_repository_details: Optional[Dict[str, Any]]
     build_status: Optional[str]
     build_error_logs: Optional[str]
     retry_count: int
@@ -27,14 +26,8 @@ class AgentState(TypedDict):
     current_step_index: int
     analysis_results: Optional[str]
     start_time: Optional[float]  # time.time() when job started, for duration calc
-    component_name: Optional[str]  # Component name for multi-project repos (e.g., "frontend")
-    component_path: Optional[str]  # Component path relative to repo root (e.g., "frontend")
-    component_spec: Optional[Dict[str, Any]]  # Plan-driven component payload (application)
+    component: Optional[Dict[str, Any]]  # ApplicationComponent from the plan
     branch_name: Optional[str]  # Branch to push to (used for multi-project repos)
-    overridden_envs: Optional[dict]  # {"KEY": "value"} — env vars injected into K8s Deployment
-    role: Optional[str]  # "frontend", "backend", "worker", "api-gateway"
-    api_path_prefix: Optional[str]  # "/api", "/auth" — for Ingress path rules
-    is_multi_project: Optional[bool]  # True if repo has multiple components
 
 
 class PostProcessingState(TypedDict):
@@ -42,7 +35,6 @@ class PostProcessingState(TypedDict):
     project_id: str
     build_id: str
     start_time: Optional[float]
-    is_multi_project: bool
     # List of component dicts: [{name, app_name, api_path_prefix, port, health_check_path}]
     components: list
     ingress_config: Optional[dict]
