@@ -99,8 +99,10 @@ class Connection(BaseModel):
     from_component: str = Field(..., description="Source component name (e.g., 'backend')")
     to_component: str = Field(..., description="Target component or external service name (e.g., 'mongodb', 'Stripe API')")
     scope: Literal["internal", "external"] = Field(..., description="'internal' = deployed in cluster, 'external' = third-party service")
-    env_key: str = Field(..., description="Environment variable holding this connection (e.g., 'MONGODB_URI', 'STRIPE_SECRET_KEY')")
-    resolved_value: str = Field("", description="Resolved connection string/URL. Use K8s service names for internal.")
+    env_updates: List[EnvVariable] = Field(
+        default_factory=list,
+        description="All env variables updated for this connection",
+    )
 
 
 class IngressRule(BaseModel):

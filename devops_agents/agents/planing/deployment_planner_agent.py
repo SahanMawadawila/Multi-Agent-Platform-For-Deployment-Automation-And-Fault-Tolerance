@@ -229,18 +229,22 @@ async def run_deployment_planner(
         )
         component.env_variables = envs
 
-    # Override env values based on resolved connection values.
+    # Override env values based on env_updates.
     for connection in connections:
-        if not connection.resolved_value:
+        updates = list(getattr(connection, "env_updates", []) or [])
+        if not updates:
             continue
+
         for component in app_components:
             if component.name == connection.from_component:
-                _update_component_env(component, connection.env_key, connection.resolved_value)
+                for env in updates:
+                    _update_component_env(component, env.key, env.value)
                 break
         else:
             for component in infra_components:
                 if component.name == connection.from_component:
-                    _update_component_env(component, connection.env_key, connection.resolved_value)
+                    for env in updates:
+                        _update_component_env(component, env.key, env.value)
                     break
 
     logger.info(f"[{project_id}] ✅ Planning complete.")
@@ -265,5 +269,5 @@ async def run_deployment_planner(
     return DeploymentPlan(
         components=[*app_components, *infra_components],
         connections=connections,
-        ingress=ingress or IngressConfig(host=f"app-{project_id}.flowpilotai.me", tls=True, rules=[]),
+        ingress=ingress or IngressConfig(host=f"app-{project_id}.{settings.domain_name}", tls=True, rules=[]),
     )

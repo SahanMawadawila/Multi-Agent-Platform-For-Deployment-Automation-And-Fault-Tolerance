@@ -22,8 +22,12 @@ Rules:
 - Use scope=external for third-party services and managed databases.
 - Do NOT invent infrastructure components.
 - Local env values may reference different names (localhost, docker-compose service names, etc.).
-    Use the provided application/infra component names to rewrite internal connection targets and resolved_value
+    Use the provided application/infra component names to rewrite internal connection targets and env_updates
     so they match the K8s service names exactly.
+- For each connection, populate env_updates with ALL env variables required for this connection to work in K8s.
+    Do not update only one key. Include every variable that participates in establishing the connection.
+    Previous values may include localhost, docker-compose service names, or local k8s names; rewrite them to
+    the correct in-cluster service name or resolved value.
 - If a required env key is missing for a connection, add a descriptive entry to errors.
 - Call ConnectionExtractionResult exactly once.
 """
