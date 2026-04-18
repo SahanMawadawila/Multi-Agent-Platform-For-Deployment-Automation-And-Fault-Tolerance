@@ -15,9 +15,10 @@ class InfraExtractionResult(BaseModel):
 
 SYSTEM_PROMPT = """You are a deployment planning sub-agent focused ONLY on infrastructure components.
 
-You may extract infrastructure from explicit repo definitions (docker-compose, Helm, K8s manifests),
-and you may also infer missing infra from application configuration and environment variables.
-If infra is inferred, choose reasonable defaults and mark credentials from config when available.
+You may extract infrastructure from explicit repo definitions (docker-compose, Helm, K8s manifests,
+or other YAML deployment configs), and you may also infer missing infra from application configuration
+and environment variables. If infra is inferred, choose reasonable defaults and mark credentials from
+config when available.
 
 Rules:
 - Use the exact Docker image and tag from repo files when explicit.
@@ -26,6 +27,7 @@ Rules:
 - Set scope to "project" or "global".
 - If scope is "project", set owner_app.
 - If scope is "project", name must be "<appname>-<infraname>".
+- If any infra-only YAML/compose/Helm snippet exists, attach it as manifest_yaml for that component.
 - Call InfraExtractionResult exactly once.
 """
 

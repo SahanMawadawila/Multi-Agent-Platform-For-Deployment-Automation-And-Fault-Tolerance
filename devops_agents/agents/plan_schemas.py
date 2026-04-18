@@ -54,7 +54,7 @@ class IngressSpec(BaseModel):
 
 class ApplicationComponent(BaseModel):
     """A buildable application component (goes through Dockerfile → CI/CD → ECR → K8s)."""
-    name: str = Field(..., description="Component name (e.g., 'backend', 'frontend', 'auth-service')")
+    name: str = Field(..., description="Component name. Use 'app' for single-app projects.")
     type: Literal["application"] = Field("application", description="Component type")
     path: str = Field(".", description="Path relative to repo root (e.g., '.', 'backend', 'services/auth')")
     project_type: str = Field(..., description="Project type: 'node', 'springboot', 'python'")
@@ -88,6 +88,10 @@ class InfrastructureComponent(BaseModel):
     env_variables: List[EnvVariable] = Field(default_factory=list, description="Additional env vars for this service")
     storage: Optional[StorageSpec] = Field(default_factory=StorageSpec, description="Persistent storage config")
     resources: ResourceSpec = Field(default_factory=ResourceSpec)
+    manifest_yaml: Optional[str] = Field(
+        None,
+        description="Optional any snippet of yaml manifest found in the codebase for this infrastructure component"
+    )
 
 
 class Connection(BaseModel):
@@ -95,8 +99,10 @@ class Connection(BaseModel):
     from_component: str = Field(..., description="Source component name (e.g., 'backend')")
     to_component: str = Field(..., description="Target component or external service name (e.g., 'mongodb', 'Stripe API')")
     scope: Literal["internal", "external"] = Field(..., description="'internal' = deployed in cluster, 'external' = third-party service")
-    env_key: str = Field(..., description="Environment variable holding this connection (e.g., 'MONGODB_URI', 'STRIPE_SECRET_KEY')")
-    resolved_value: str = Field("", description="Resolved connection string/URL. Use K8s service names for internal.")
+    env_updates: List[EnvVariable] = Field(
+        default_factory=list,
+        description="All env variables updated for this connection",
+    )
 
 
 class IngressRule(BaseModel):
@@ -118,7 +124,6 @@ class DeploymentPlan(BaseModel):
     Complete deployment plan for a project.
     This is the top-level schema returned by the planning agent.
     """
-    is_monorepo: bool = Field(..., description="Whether the repository contains multiple deployable components")
     components: List[Union[ApplicationComponent, InfrastructureComponent]] = Field(
         ..., description="All components to deploy (applications + infrastructure)"
     )

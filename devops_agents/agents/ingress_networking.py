@@ -13,7 +13,6 @@ def generate_ingress(state):
     Writes to: temp/gitops_{project_id}/app/ingress.yaml
     """
     project_id = state.get("project_id", "")
-    is_multi_project = state.get("is_multi_project", False)
     components = state.get("components", [])
     ingress_config = state.get("ingress_config") or {}
     
@@ -30,10 +29,16 @@ def generate_ingress(state):
     app_dir = os.path.join(gitops_base, "app")
     os.makedirs(app_dir, exist_ok=True)
     
+    exposed_components = [
+        comp for comp in components
+        if (comp.get("ingress") or {}).get("expose", True)
+    ]
+    is_multi_project = len(exposed_components) > 1
+
     if ingress_config.get("rules"):
         send_terminal_message(project_id, "🌐 Generating Ingress from plan rules...\n\r")
 
-        service_map = {comp.get("name"): comp.get("app_name") for comp in components}
+        service_map = {comp.get("name"): comp.get("name") for comp in components}
         template_components = []
         for rule in ingress_config.get("rules", []):
             target_service = service_map.get(rule.get("service")) or rule.get("service")
@@ -54,17 +59,24 @@ def generate_ingress(state):
         
         # Sort: specific paths first (/api, /auth), catch-all (/) last
         sorted_components = sorted(
-            components,
-            key=lambda c: (c.get("api_path_prefix", "/") == "/", c.get("api_path_prefix", "/"))
+            exposed_components,
+            key=lambda c: (
+                (c.get("ingress") or {}).get("path_prefix", "/") == "/",
+                (c.get("ingress") or {}).get("path_prefix", "/"),
+            )
         )
         
         template_components = []
         for comp in sorted_components:
+            ingress = comp.get("ingress") or {}
             template_components.append({
-                "path_prefix": comp.get("api_path_prefix", "/"),
-                "service_name": comp["app_name"],
+                "path_prefix": ingress.get("path_prefix", "/"),
+                "service_name": comp.get("name"),
             })
-            send_terminal_message(project_id, f"   📍 {comp.get('api_path_prefix', '/')} → {comp['app_name']}\n\r")
+            send_terminal_message(
+                project_id,
+                f"   📍 {ingress.get('path_prefix', '/')} → {comp.get('name')}\n\r",
+            )
         
         template = env.get_template("ingress-multi.j2")
         content = template.render(
@@ -74,15 +86,16 @@ def generate_ingress(state):
             components=template_components,
         )
     else:
-        if not components:
+        if not exposed_components:
             send_terminal_message(project_id, "ℹ️ No application components to expose. Skipping ingress.\n\r")
             return {}
         send_terminal_message(project_id, "🌐 Generating Ingress...\n\r")
         
-        comp = components[0]
+        comp = exposed_components[0]
+        app_name = comp.get("name")
         template = env.get_template("ingress.j2")
         content = template.render(
-            app_name=comp["app_name"],
+            app_name=app_name,
             namespace=namespace,
             host=host,
             domain_name=settings.domain_name,

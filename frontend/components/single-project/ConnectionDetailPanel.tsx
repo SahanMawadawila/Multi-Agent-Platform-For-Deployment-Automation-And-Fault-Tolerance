@@ -30,6 +30,46 @@ export function ConnectionDetailPanel({
     setLocalConn((prev: any) => ({ ...prev, [field]: value }));
   };
 
+  const handleEnvUpdateChange = (
+    index: number,
+    field: string,
+    value: string,
+  ) => {
+    setLocalConn((prev: any) => {
+      const envUpdates = Array.isArray(prev.env_updates)
+        ? [...prev.env_updates]
+        : [];
+      envUpdates[index] = { ...(envUpdates[index] || {}), [field]: value };
+      return { ...prev, env_updates: envUpdates };
+    });
+  };
+
+  const handleAddEnvUpdate = () => {
+    setLocalConn((prev: any) => {
+      const envUpdates = Array.isArray(prev.env_updates)
+        ? [...prev.env_updates]
+        : [];
+      envUpdates.push({
+        key: "",
+        value: "",
+        source: "override",
+        editable: true,
+        sensitive: false,
+      });
+      return { ...prev, env_updates: envUpdates };
+    });
+  };
+
+  const handleRemoveEnvUpdate = (index: number) => {
+    setLocalConn((prev: any) => {
+      const envUpdates = Array.isArray(prev.env_updates)
+        ? [...prev.env_updates]
+        : [];
+      envUpdates.splice(index, 1);
+      return { ...prev, env_updates: envUpdates };
+    });
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-900 border-l border-slate-800 text-slate-200">
       <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900/50">
@@ -69,47 +109,67 @@ export function ConnectionDetailPanel({
                 }
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  Scope
-                </label>
-                <select
-                  className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
-                  value={localConn.scope || "internal"}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                    handleFieldChange("scope", e.target.value)
-                  }
-                >
-                  <option value="internal">internal</option>
-                  <option value="external">external</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  Env Key
-                </label>
+            <div>
+              <label className="text-xs text-slate-400 mb-1 block">Scope</label>
+              <select
+                className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
+                value={localConn.scope || "internal"}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                  handleFieldChange("scope", e.target.value)
+                }
+              >
+                <option value="internal">internal</option>
+                <option value="external">external</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">
+              Env Updates
+            </h4>
+            <button
+              className="text-xs text-violet-300 hover:text-violet-200"
+              onClick={handleAddEnvUpdate}
+            >
+              + Add
+            </button>
+          </div>
+          <div className="space-y-3">
+            {(localConn.env_updates || []).length === 0 && (
+              <p className="text-xs text-slate-500">No env updates mapped.</p>
+            )}
+            {(localConn.env_updates || []).map((env: any, idx: number) => (
+              <div
+                key={`${env.key || "env"}-${idx}`}
+                className="grid grid-cols-[1fr_1fr_auto] gap-2"
+              >
                 <input
-                  className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
-                  value={localConn.env_key || ""}
+                  className="bg-slate-800/50 border border-slate-700 rounded-md text-xs h-8 px-2"
+                  placeholder="KEY"
+                  value={env.key || ""}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    handleFieldChange("env_key", e.target.value)
+                    handleEnvUpdateChange(idx, "key", e.target.value)
                   }
                 />
+                <input
+                  className="bg-slate-800/50 border border-slate-700 rounded-md text-xs h-8 px-2 font-mono"
+                  placeholder="VALUE"
+                  value={env.value || ""}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    handleEnvUpdateChange(idx, "value", e.target.value)
+                  }
+                />
+                <button
+                  className="text-xs text-red-300 hover:text-red-200 px-2"
+                  onClick={() => handleRemoveEnvUpdate(idx)}
+                >
+                  Remove
+                </button>
               </div>
-            </div>
-            <div>
-              <label className="text-xs text-slate-400 mb-1 block">
-                Resolved Value
-              </label>
-              <input
-                className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2 font-mono"
-                value={localConn.resolved_value || ""}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  handleFieldChange("resolved_value", e.target.value)
-                }
-              />
-            </div>
+            ))}
           </div>
         </div>
       </div>

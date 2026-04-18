@@ -52,17 +52,13 @@ export function DeploymentPlanEditor({
     let xOffset = 100;
     let yOffset = 100;
 
-    const isMonorepo = Boolean(editablePlan.is_monorepo);
     const appServiceNames: Record<string, string> = {};
     const serviceNameToComponent: Record<string, string> = {};
 
     editablePlan.components.forEach((comp: any) => {
       if (comp.type === "application") {
-        const serviceName = isMonorepo
-          ? `app-${projectId}-${comp.name}`
-          : `app-${projectId}`;
-        appServiceNames[comp.name] = serviceName;
-        serviceNameToComponent[serviceName] = comp.name;
+        appServiceNames[comp.name] = comp.name;
+        serviceNameToComponent[comp.name] = comp.name;
       } else if (comp.type === "infrastructure") {
         serviceNameToComponent[comp.name] = comp.name;
       }
@@ -74,8 +70,9 @@ export function DeploymentPlanEditor({
     };
 
     editablePlan.components.forEach((comp: any, i: number) => {
+      const nodeId = comp.name;
       newNodes.push({
-        id: comp.name,
+        id: nodeId,
         type: "customNode",
         position: { x: xOffset, y: yOffset },
         data: {

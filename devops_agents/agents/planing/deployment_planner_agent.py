@@ -10,16 +10,16 @@ reasons over the repository, and produces the plan.
 import os
 import logging
 from typing import Annotated
-from urllib.parse import urlparse, urlunparse
 
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 
-from agents.plan_schemas import DeploymentPlan, IngressConfig, IngressRule
+from agents.plan_schemas import DeploymentPlan, IngressConfig, IngressRule, EnvVariable
 from agents.planing.component_extractor import run_component_extractor
 from agents.planing.infra_extractor import run_infra_extractor
 from agents.planing.connection_mapper import run_connection_mapper
 from tools.git_tools import AsyncGitTools
+from config.settings import settings
 
 # File-based logger for agent traceability (not sent to frontend terminal)
 os.makedirs("logs", exist_ok=True)
@@ -57,7 +57,7 @@ async def read_file(
         logger.info(f"[{project_id}] 📖 Reading {file_path} (Lines {start_line}-{end_line})")
     else:
         logger.info(f"[{project_id}] 📖 Reading {file_path}")
-        
+
     result = await AsyncGitTools.read_file(local_path, file_path, start_line, end_line)
     return result
 
@@ -142,31 +142,6 @@ def _build_file_list_str(file_list: list) -> str:
     return "\n".join(f"- {file}" for file in file_list)
 
 
-def _replace_host_in_url(value: str, service_name: str) -> str:
-    if not value:
-        return service_name
-
-    try:
-        parsed = urlparse(value)
-        if parsed.scheme and parsed.netloc:
-            netloc = parsed.netloc
-            userinfo = ""
-            hostport = netloc
-            if "@" in netloc:
-                userinfo, hostport = netloc.rsplit("@", 1)
-            host = hostport
-            port = ""
-            if ":" in hostport:
-                host, port = hostport.split(":", 1)
-            new_hostport = f"{service_name}:{port}" if port else service_name
-            new_netloc = f"{userinfo}@{new_hostport}" if userinfo else new_hostport
-            return urlunparse(parsed._replace(netloc=new_netloc))
-    except Exception:
-        return value.replace("localhost", service_name).replace("127.0.0.1", service_name)
-
-    return value.replace("localhost", service_name).replace("127.0.0.1", service_name)
-
-
 # ============== AGENT ==============
 
 async def run_deployment_planner(
@@ -203,6 +178,15 @@ async def run_deployment_planner(
         logger=logger,
     )
 
+    # If only one component, normalize its name to "app".
+    if len(app_components) == 1:
+        app_components[0].name = "app"
+
+    # Build unique image name based on project id and component name.
+    for component in app_components:
+        component_name = component.name or "app"
+        component.image_name = f"{project_id}-{component_name}"
+
     infra_components = await run_infra_extractor(
         file_list_str=file_list_str,
         local_path=local_path,
@@ -212,20 +196,6 @@ async def run_deployment_planner(
         tools=tools,
         logger=logger,
     )
-
-    rename_map = {}
-    for infra in infra_components:
-        if infra.scope != "project":
-            continue
-        owner_app = infra.owner_app
-        if not owner_app:
-            continue
-        expected_prefix = f"{owner_app}-"
-        if infra.name.startswith(expected_prefix):
-            continue
-        old_name = infra.name
-        infra.name = f"{expected_prefix}{infra.name}"
-        rename_map[old_name] = infra.name
 
     connections = await run_connection_mapper(
         file_list_str=file_list_str,
@@ -238,54 +208,44 @@ async def run_deployment_planner(
         logger=logger,
     )
 
-    if rename_map:
-        for connection in connections:
-            if connection.to_component in rename_map:
-                connection.to_component = rename_map[connection.to_component]
-
-    def _find_app_component(name: str):
-        for component in app_components:
-            if component.name == name:
-                return component
-        return app_components[0] if len(app_components) == 1 else None
-
-    is_monorepo = len(app_components) > 1 or len({component.path for component in app_components}) > 1
-    app_service_names = {
-        component.name: f"app-{project_id}-{component.name}" if is_monorepo else f"app-{project_id}"
-        for component in app_components
-    }
-    infra_service_names = {component.name: component.name for component in infra_components}
-
-    for connection in connections:
-        if connection.scope != "internal":
-            continue
-        target_component = _find_app_component(connection.from_component)
-        if not target_component:
-            raise ValueError(f"Missing application component for connection: {connection.from_component}")
-
-        if connection.to_component in app_service_names:
-            connection.to_component = app_service_names[connection.to_component]
-        elif connection.to_component in infra_service_names:
-            connection.to_component = infra_service_names[connection.to_component]
-
-        env_var = None
-        for existing in target_component.env_variables:
-            if existing.key == connection.env_key:
-                env_var = existing
-                break
-
-        if not env_var:
-            raise ValueError(
-                f"Missing env key '{connection.env_key}' for component '{target_component.name}'"
+    def _update_component_env(component, env_key: str, value: str) -> None:
+        if not env_key or value is None:
+            return
+        envs = list(component.env_variables or [])
+        for env in envs:
+            if env.key == env_key:
+                env.value = value
+                env.source = "override"
+                component.env_variables = envs
+                return
+        envs.append(
+            EnvVariable(
+                key=env_key,
+                value=value,
+                source="override",
+                editable=True,
+                sensitive=False,
             )
+        )
+        component.env_variables = envs
 
-        service_name = connection.to_component
-        if connection.resolved_value:
-            env_var.value = _replace_host_in_url(connection.resolved_value, service_name)
-            env_var.source = "override"
+    # Override env values based on env_updates.
+    for connection in connections:
+        updates = list(getattr(connection, "env_updates", []) or [])
+        if not updates:
+            continue
+
+        for component in app_components:
+            if component.name == connection.from_component:
+                for env in updates:
+                    _update_component_env(component, env.key, env.value)
+                break
         else:
-            env_var.value = service_name
-            env_var.source = "override"
+            for component in infra_components:
+                if component.name == connection.from_component:
+                    for env in updates:
+                        _update_component_env(component, env.key, env.value)
+                    break
 
     logger.info(f"[{project_id}] ✅ Planning complete.")
     ingress = None
@@ -301,14 +261,13 @@ async def run_deployment_planner(
         ]
         rules.sort(key=lambda rule: (rule.path == "/", rule.path))
         ingress = IngressConfig(
-            host=f"app-{project_id}.flowpilotai.me",
+            host=f"app-{project_id}.{settings.domain_name}",
             tls=True,
             rules=rules,
         )
 
     return DeploymentPlan(
-        is_monorepo=is_monorepo,
         components=[*app_components, *infra_components],
         connections=connections,
-        ingress=ingress or IngressConfig(host=f"app-{project_id}.flowpilotai.me", tls=True, rules=[]),
+        ingress=ingress or IngressConfig(host=f"app-{project_id}.{settings.domain_name}", tls=True, rules=[]),
     )

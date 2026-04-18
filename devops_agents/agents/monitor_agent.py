@@ -16,7 +16,8 @@ async def build_monitor_agent(state: AgentState):
     build_id = state.get("build_id", "")
     local_path = state["local_path"]
     token = settings.github_token
-    component_name = state.get("component_name")
+    component = state.get("component") or {}
+    component_name = component.get("name")
     
     # Get the current commit SHA to monitor the correct build
     try:

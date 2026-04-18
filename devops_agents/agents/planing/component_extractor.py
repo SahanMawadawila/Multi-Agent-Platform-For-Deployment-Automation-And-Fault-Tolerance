@@ -24,6 +24,8 @@ Rules:
 - Use package.json/pom.xml/pyproject for build/run commands and versions.
 - Populate env_variables from .env/.env.example/config files.
 - Set ingress.expose true only for user-facing services.
+- For single-app projects, use name "app".
+- Leave image_name empty (it will be generated later).
 - Call ComponentExtractionResult exactly once.
 """
 
