@@ -390,3 +390,51 @@ async def rollback_deployment(
         return {"message": f"Rollback to version {target_build.build_version} started"}
     else:
         return {"error": "Background tasks not available"}
+
+
+import os
+import time
+import requests
+from fastapi import HTTPException
+
+@router.get("/{project_id}/logs")
+async def get_project_logs(
+    project_id: str,
+    db: AsyncSession = Depends(get_db), 
+    user: dict = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(UserProject).where(UserProject.project_id == project_id)
+        .where(UserProject.owner_id == int(user["id"]))
+    )
+    project = result.scalars().first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Loki proxy
+    loki_url = os.getenv("LOKI_URL", "http://localhost:3100")
+    
+    # Query logs specifically for the generated application namespace (which matches project_id)
+    query = f'{{namespace="{project.project_id}"}}'
+
+    # Loki query_range defaults to 1 hour. We pull up to 7 days of logs to ensure we
+    # catch startup messages on apps that have been running for a while.
+    start_time = int((time.time() - (7 * 24 * 3600)) * 1e9) # nanoseconds
+
+    try:
+        response = requests.get(
+            f"{loki_url}/loki/api/v1/query_range",
+            params={
+                "query": query, 
+                "limit": 500,
+                "start": start_time
+            },
+            timeout=5
+        )
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise HTTPException(status_code=response.status_code, detail=f"Loki error: {response.text}")
+    except Exception as e:
+        print(f"Failed to fetch logs from Loki: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to connect to Loki: {str(e)}")

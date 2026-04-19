@@ -6,6 +6,7 @@ import {
   ExternalLink,
   GitCommit,
   XCircle,
+  Terminal,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
@@ -13,6 +14,7 @@ import { Card } from "../ui/card";
 import ProjectTerminal from "./ProjectTerminal";
 import { ApplicationDiagramViewer } from "../diagram/application-diagram-viewer";
 import { DetailedProject } from "@/types/project";
+import Link from "next/link";
 
 interface CurrentDeployment {
   build_id: number;
@@ -102,11 +104,22 @@ export default function DeploymentExecutionView({
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-slate-800 pb-4">
-        <h1 className="text-3xl font-bold text-white">Deployment Console</h1>
-        <p className="text-sm text-slate-400">
-          Monitor rollout progress and application topology.
-        </p>
+      <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-3xl font-bold text-white">Deployment Console</h1>
+          <p className="text-sm text-slate-400">
+            Monitor rollout progress and application topology.
+          </p>
+        </div>
+        
+        {/* Added View Logs button */}
+        <Link
+          href={`/dashboard/project/${project.project_id}/logs`}
+          className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-medium transition-colors border border-slate-700"
+        >
+          <Terminal size={18} className="text-violet-400" />
+          View Live Logs
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

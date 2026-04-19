@@ -77,6 +77,9 @@ function ProjectCardSkeleton() {
 export default function ProjectList() {
   const [projects, setProjects] = useState<ProjectSimple[]>([]);
   const [projectsLoading, setProjectsLoading] = useState<boolean>(true);
+  const [page, setPage] = useState<number>(1);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const { data } = useSession();
   const token = data?.backendToken;
 
@@ -84,9 +87,11 @@ export default function ProjectList() {
     console.log("Loading projects with token:", token);
     if (!token) return;
     setProjectsLoading(true);
-    loadProjects(token)
+    setPage(1);
+    loadProjects(token, 1)
       .then((data) => {
         setProjects(data.projects);
+        setHasMore(data.pagination.page < data.pagination.total_pages);
       })
       .catch((err) => {
         console.error("Error loading projects:", err);
@@ -96,13 +101,29 @@ export default function ProjectList() {
       });
   }, [token]);
 
+  const handleLoadMore = async () => {
+    if (!token || loadingMore) return;
+    setLoadingMore(true);
+    const nextPage = page + 1;
+    try {
+      const data = await loadProjects(token, nextPage);
+      setProjects((prev) => [...prev, ...data.projects]);
+      setPage(nextPage);
+      setHasMore(data.pagination.page < data.pagination.total_pages);
+    } catch (err) {
+      console.error("Error loading more projects:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   return (
     <div className="lg:col-span-1 space-y-6">
       <div className="flex justify-between items-center border-b border-slate-800 pb-4">
         <h2 className="text-xl font-bold text-white">Current Deployments</h2>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-4 max-h-[calc(100vh-12rem)] overflow-y-auto pr-2 overflow-x-hidden">
         {projectsLoading && (
           <>
             <ProjectCardSkeleton />
@@ -153,6 +174,18 @@ export default function ProjectList() {
             </Card>
           </Link>
         ))}
+
+        {hasMore && (
+          <div className="flex justify-center pt-2 pb-4">
+            <button
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              className="text-sm font-medium text-violet-400 hover:text-violet-300 disabled:opacity-50 transition-colors"
+            >
+              {loadingMore ? "Loading..." : "Load More"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
