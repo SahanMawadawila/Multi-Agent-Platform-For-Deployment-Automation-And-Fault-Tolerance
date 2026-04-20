@@ -39,6 +39,14 @@ duplicate the `.env.example` file and rename it to `.env`. Update the values as 
 
 to add new dependencies, use `uv add <package-name>`
 
+## 7. Required Port-Forwards (For Logs)
+
+To allow the backend to fetch logs from your Kubernetes cluster, you need to port-forward the Loki service to your local machine. Leave this running in a separate terminal:
+
+```bash
+kubectl port-forward svc/loki -n logging 3100:3100
+```
+
 📌 Database Setup & Migration Guide (PostgreSQL + SQLAlchemy + Alembic)
 
 🔧 1. Install PostgreSQL - Download PostgreSQL from the official page:
