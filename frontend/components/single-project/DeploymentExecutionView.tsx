@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   CheckCircle,
   Clock,
   ExternalLink,
@@ -113,13 +114,23 @@ export default function DeploymentExecutionView({
         </div>
         
         {/* Added View Logs button */}
-        <Link
-          href={`/dashboard/project/${project.project_id}/logs`}
-          className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-medium transition-colors border border-slate-700"
-        >
-          <Terminal size={18} className="text-violet-400" />
-          View Live Logs
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/dashboard/project/${project.project_id}/logs`}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-medium transition-colors border border-slate-700"
+          >
+            <Terminal size={18} className="text-violet-400" />
+            View Live Logs
+          </Link>
+
+          <Link
+            href={`/dashboard/project/${project.project_id}/deploy/vitals`}
+            className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg font-medium transition-colors border border-violet-500/60"
+          >
+            <Activity size={18} />
+            View Vitals
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

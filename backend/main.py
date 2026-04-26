@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import auth, projects, github, project_terminal, k8s_diagram
 from app.routers import deploy
+from app.routers import vitals
 from app.config import settings
 
 app = FastAPI()
@@ -25,17 +26,21 @@ app.include_router(projects.router, prefix="/api/projects")
 app.include_router(k8s_diagram.router, prefix="/api/k8s")
 app.include_router(github.router, prefix="/api/github")
 app.include_router(project_terminal.router, prefix="/ws/terminal")
+app.include_router(vitals.router, prefix="/api")
 
 from app.utils.kafka_event_consumer import consumer_instance
+from app.services.k8s_vitals_collector import collector_instance
 
 @app.on_event("startup")
 async def _start_background_consumers():
     # Start Kafka consumer for project build events
     asyncio.create_task(consumer_instance.start())
+    asyncio.create_task(collector_instance.start())
 
 @app.on_event("shutdown")
 async def _stop_background_consumers():
     await consumer_instance.stop()
+    await collector_instance.stop()
 
 # @app.get("/")
 # async def root():

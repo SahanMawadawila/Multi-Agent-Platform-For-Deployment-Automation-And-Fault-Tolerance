@@ -21,6 +21,10 @@ class Settings(BaseSettings):
 
     # Kubernetes settings
     KUBECONFIG: Optional[str] = None
+    PROMETHEUS_NAMESPACE: str = "monitoring"
+    PROMETHEUS_SERVICE: str = "prometheus-kube-prometheus-prometheus"
+    PROMETHEUS_SERVICE_PORT: int = 9090
+    PROMETHEUS_QUERY_RANGE_MINUTES: int = 5
     
     # Security settings
     SECRET_KEY: str

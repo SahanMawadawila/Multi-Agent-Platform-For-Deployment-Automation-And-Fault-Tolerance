@@ -47,6 +47,27 @@ To allow the backend to fetch logs from your Kubernetes cluster, you need to por
 kubectl port-forward svc/loki -n logging 3100:3100
 ```
 
+## 8. Vitals Monitoring Access
+
+The vitals pipeline needs two things:
+
+1. Access to the Kubernetes API using your kubeconfig or an in-cluster service account.
+2. A reachable Prometheus endpoint in the cluster.
+
+Kubeconfig only authenticates the backend to Kubernetes. It does not by itself guarantee that the backend can reach the Prometheus pod/service.
+
+If you are running the backend locally against EKS, make sure your kubeconfig is set up first:
+
+```bash
+aws eks update-kubeconfig --region ap-south-1 --name Flow-Pilot-AI
+```
+
+Behind the scenes, the backend queries the Prometheus service inside the `monitoring` namespace. The default service name is `prometheus-kube-prometheus-prometheus` on port `9090`.
+
+Prometheus must already be scraping pod CPU and memory metrics in the cluster for this to return data.
+
+If you see `503 Service Unavailable` while querying vitals, the backend can reach Kubernetes but the control plane or cluster network cannot reach Prometheus. In local development, the reliable workaround is to expose Prometheus with an ingress/ALB or port-forward the service before starting the backend.
+
 📌 Database Setup & Migration Guide (PostgreSQL + SQLAlchemy + Alembic)
 
 🔧 1. Install PostgreSQL - Download PostgreSQL from the official page:

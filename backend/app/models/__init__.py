@@ -9,5 +9,14 @@ from .user_project import UserProject
 from .project_builds import ProjectBuild, BuildStatus
 from .oauth_tokens import OauthToken
 from .refresh_token import RefreshToken
+from .deployment_vitals import DeploymentVital
 
-__all__ = ["Base", "User", "UserProject", "ProjectBuild", "BuildStatus", "RefreshToken"]
+__all__ = [
+	"Base",
+	"User",
+	"UserProject",
+	"ProjectBuild",
+	"BuildStatus",
+	"RefreshToken",
+	"DeploymentVital",
+]
