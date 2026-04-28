@@ -28,6 +28,7 @@ class AgentState(TypedDict):
     start_time: Optional[float]  # time.time() when job started, for duration calc
     component: Optional[Dict[str, Any]]  # ApplicationComponent from the plan
     branch_name: Optional[str]  # Branch to push to (used for multi-project repos)
+    gitops_dir: str
 
 
 class PostProcessingState(TypedDict):
@@ -35,6 +36,7 @@ class PostProcessingState(TypedDict):
     project_id: str
     build_id: str
     start_time: Optional[float]
+    gitops_dir: str
     # List of component dicts: [{name, app_name, api_path_prefix, port, health_check_path}]
     components: list
     ingress_config: Optional[dict]

@@ -104,7 +104,19 @@ class AsyncGitTools:
             repo.index.commit(commit_message)
             origin = repo.remote(name='origin')
             branch = repo.active_branch.name
-            origin.push(refspec=f"{branch}:{branch}", set_upstream=True)
+            
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    origin.push(refspec=f"{branch}:{branch}", set_upstream=True)
+                    return "Pushed"
+                except git.exc.GitCommandError as e:
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(1) # Backoff before retry
+                        repo.git.pull('origin', branch, rebase=True)
+                    else:
+                        raise e
             return "Pushed"
 
         return await asyncio.to_thread(_push)
@@ -122,8 +134,21 @@ class AsyncGitTools:
                 commit = repo.index.commit(commit_message)
                 origin = repo.remote(name='origin')
                 branch = repo.active_branch.name
-                origin.push(refspec=f"{branch}:{branch}", set_upstream=True)
-                return str(commit.hexsha)
+                
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        origin.push(refspec=f"{branch}:{branch}", set_upstream=True)
+                        break
+                    except git.exc.GitCommandError as e:
+                        if attempt < max_retries - 1:
+                            import time
+                            time.sleep(1) # Backoff before retry
+                            repo.git.pull('origin', branch, rebase=True)
+                        else:
+                            raise e
+                            
+                return str(repo.head.commit.hexsha)
             # Return current HEAD commit if no changes
             return str(repo.head.commit.hexsha)
 

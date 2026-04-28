@@ -25,7 +25,7 @@ def generate_ingress(state):
     env = Environment(loader=FileSystemLoader(templates_dir))
     
     # Ingress always goes to app/ingress.yaml
-    gitops_base = os.path.join(os.getcwd(), "temp", f"gitops_{project_id}")
+    gitops_base = state.get("gitops_dir")
     app_dir = os.path.join(gitops_base, "app")
     os.makedirs(app_dir, exist_ok=True)
     
