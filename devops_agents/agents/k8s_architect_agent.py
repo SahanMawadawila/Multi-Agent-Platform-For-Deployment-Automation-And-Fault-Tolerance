@@ -62,7 +62,7 @@ async def k8s_architect_agent(state):
     templates_dir = os.path.join(base_dir, "templates", "k8s")
     env = Environment(loader=FileSystemLoader(templates_dir))
     
-    gitops_base = os.path.join(os.getcwd(), "temp", f"gitops_{project_id}")
+    gitops_base = state.get("gitops_dir")
     manifests_path = os.path.join(gitops_base, "app", app_name)
     os.makedirs(manifests_path, exist_ok=True)
     

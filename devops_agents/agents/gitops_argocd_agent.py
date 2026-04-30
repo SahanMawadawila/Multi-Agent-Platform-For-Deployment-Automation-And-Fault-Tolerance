@@ -27,7 +27,7 @@ async def gitops_argocd_agent(state):
     
     namespace = project_id
     gitops_repo_name = f"gitops-{project_id}"
-    gitops_temp_dir = os.path.join(os.getcwd(), "temp", f"gitops_{project_id}")
+    gitops_temp_dir = state.get("gitops_dir")
     
     # 1. GitHub Setup
     send_terminal_message(project_id, "📦 Setting up GitOps repository...\n\r")
@@ -75,7 +75,7 @@ async def gitops_argocd_agent(state):
     send_terminal_message(project_id, "✅ ArgoCD Repository Secret configured.\n\r")
     
     # 3. Clone GitOps repo to a push directory
-    push_dir = os.path.join(os.getcwd(), "temp", f"gitops_{project_id}_push")
+    push_dir = f"{gitops_temp_dir}_push"
     if os.path.exists(push_dir):
         shutil.rmtree(push_dir, onerror=lambda func, path, _: (os.chmod(path, stat.S_IWRITE), func(path)))
     
@@ -161,7 +161,8 @@ async def gitops_argocd_agent(state):
         process = await asyncio.create_subprocess_exec(
             "kubectl", "apply", "-f", argocd_file_path,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
+            cwd=push_dir
         )
         stdout, stderr = await process.communicate()
         

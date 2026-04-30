@@ -17,7 +17,7 @@ async def infra_deployment_agent(state: dict):
 
     send_terminal_message(project_id, f"🧱 Generating infra manifests for {service_name or 'infra'}...\n\r")
 
-    gitops_base = os.path.join(os.getcwd(), "temp", f"gitops_{project_id}")
+    gitops_base = state.get("gitops_dir")
     manifests_path = os.path.join(gitops_base, "app", "infra", service_name or "infra")
     os.makedirs(manifests_path, exist_ok=True)
 

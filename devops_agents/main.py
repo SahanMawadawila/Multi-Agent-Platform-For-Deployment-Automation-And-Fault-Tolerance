@@ -69,6 +69,7 @@ async def process_job(job):
         infra_deployment_agent({
             "project_id": project_id,
             "infra_component": infra,
+            "gitops_dir": gitops_dir,
         })
         for infra in infra_components
     ]
@@ -95,6 +96,7 @@ async def process_job(job):
             "analysis_results": None,
             "start_time": start_time,
             "component": comp,
+            "gitops_dir": gitops_dir,
         }
         return await component_graph.ainvoke(comp_state, config=config)
 
@@ -132,6 +134,7 @@ async def process_job(job):
         "start_time": start_time,
         "components": app_components,
         "ingress_config": deployment_plan.get("ingress"),
+        "gitops_dir": gitops_dir,
     }
     
     await post_processing_graph.ainvoke(post_state, config=config)
