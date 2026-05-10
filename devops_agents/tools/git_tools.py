@@ -13,6 +13,7 @@ def force_remove_readonly(func, path, exc_info):
     func(path)
 
 class AsyncGitTools:
+    _push_lock = asyncio.Lock()
     
     @staticmethod
     async def clone_repository(repo_url: str, clone_dir: str) -> str:
@@ -88,71 +89,75 @@ class AsyncGitTools:
     @staticmethod
     async def write_and_push(local_path: str, file_path: str, content: str, commit_message: str):
         """Writes a file, commits it, and pushes to origin."""
-        def _push():
-            full_path = os.path.join(local_path, file_path)
-            
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
-            
-            # Write content
-            with open(full_path, 'w', encoding='utf-8') as f:
-                f.write(content)
-            
-            #stage, commit and push
-            repo = git.Repo(local_path)
-            repo.index.add([file_path]) 
-            repo.index.commit(commit_message)
-            origin = repo.remote(name='origin')
-            branch = repo.active_branch.name
-            
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    origin.push(refspec=f"{branch}:{branch}", set_upstream=True)
-                    return "Pushed"
-                except git.exc.GitCommandError as e:
-                    if attempt < max_retries - 1:
-                        import time
-                        time.sleep(1) # Backoff before retry
-                        repo.git.pull('origin', branch, rebase=True)
-                    else:
-                        raise e
-            return "Pushed"
-
-        return await asyncio.to_thread(_push)
-
-    @staticmethod
-    async def bulk_push(local_path: str, commit_message: str) -> str:
-        """Stages all changes in the directory, commits, and pushes. Returns commit SHA."""
-        def _push():
-            repo = git.Repo(local_path)
-            # Stage all changes (new files, modifications, deletions)
-            repo.git.add(A=True)
-            
-            # Check if there are changes to commit
-            if repo.is_dirty() or repo.untracked_files:
-                commit = repo.index.commit(commit_message)
+        async with AsyncGitTools._push_lock:
+            def _push():
+                full_path = os.path.join(local_path, file_path)
+                
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                
+                # Write content
+                with open(full_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                
+                #stage, commit and push
+                repo = git.Repo(local_path)
+                repo.index.add([file_path]) 
+                repo.index.commit(commit_message)
                 origin = repo.remote(name='origin')
                 branch = repo.active_branch.name
                 
                 max_retries = 3
                 for attempt in range(max_retries):
                     try:
+                        # Fetch and pull remote changes before pushing to avoid rejection
+                        repo.git.pull('origin', branch, rebase=True)
                         origin.push(refspec=f"{branch}:{branch}", set_upstream=True)
-                        break
+                        return "Pushed"
                     except git.exc.GitCommandError as e:
                         if attempt < max_retries - 1:
                             import time
                             time.sleep(1) # Backoff before retry
-                            repo.git.pull('origin', branch, rebase=True)
                         else:
                             raise e
-                            
-                return str(repo.head.commit.hexsha)
-            # Return current HEAD commit if no changes
-            return str(repo.head.commit.hexsha)
+                return "Pushed"
 
-        return await asyncio.to_thread(_push)
+            return await asyncio.to_thread(_push)
+
+    @staticmethod
+    async def bulk_push(local_path: str, commit_message: str) -> str:
+        """Stages all changes in the directory, commits, and pushes. Returns commit SHA."""
+        async with AsyncGitTools._push_lock:
+            def _push():
+                repo = git.Repo(local_path)
+                # Stage all changes (new files, modifications, deletions)
+                repo.git.add(A=True)
+                
+                # Check if there are changes to commit
+                if repo.is_dirty() or repo.untracked_files:
+                    commit = repo.index.commit(commit_message)
+                    origin = repo.remote(name='origin')
+                    branch = repo.active_branch.name
+                    
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            # Fetch and pull remote changes before pushing to avoid rejection
+                            repo.git.pull('origin', branch, rebase=True)
+                            origin.push(refspec=f"{branch}:{branch}", set_upstream=True)
+                            break
+                        except git.exc.GitCommandError as e:
+                            if attempt < max_retries - 1:
+                                import time
+                                time.sleep(1) # Backoff before retry
+                            else:
+                                raise e
+                                
+                    return str(repo.head.commit.hexsha)
+                # Return current HEAD commit if no changes
+                return str(repo.head.commit.hexsha)
+
+            return await asyncio.to_thread(_push)
 
     @staticmethod
     async def create_and_checkout_branch(local_path: str, branch_name: str):

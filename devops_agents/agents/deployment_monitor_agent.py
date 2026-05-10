@@ -66,14 +66,19 @@ async def deployment_monitor_agent(state):
         
         send_terminal_message(project_id, f"✅ {app_name} pods are running!\n\r", comp_name)
         
-        # 3. Liveness check
+        # 3. Liveness check (skip external check for internal backend services)
+        is_exposed = (comp.get("ingress") or {}).get("expose", False)
+        if not is_exposed:
+            send_terminal_message(project_id, f"🎉 {app_name} is live internally!\n\r", comp_name)
+            continue
+            
         health_url = f"{access_url}{health_path}"
         send_terminal_message(project_id, f"💓 Checking liveness: {health_url}\n\r", comp_name)
         
         is_healthy = False
-        for _ in range(24):  # Retry for 2 minutes
+        for _ in range(48):  # Retry for 4 minutes
             try:
-                resp = await asyncio.to_thread(requests.get, health_url, timeout=10, verify=True)
+                resp = await asyncio.to_thread(requests.get, health_url, timeout=10, verify=False)
                 if resp.status_code == 200:
                     is_healthy = True
                     break

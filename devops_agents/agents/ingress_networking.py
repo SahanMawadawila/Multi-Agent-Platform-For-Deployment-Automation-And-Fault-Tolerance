@@ -38,13 +38,16 @@ def generate_ingress(state):
     if ingress_config.get("rules"):
         send_terminal_message(project_id, "🌐 Generating Ingress from plan rules...\n\r")
 
-        service_map = {comp.get("name"): comp.get("name") for comp in components}
+        service_map = {comp.get("name"): {"name": comp.get("name"), "port": comp.get("port")} for comp in components}
         template_components = []
         for rule in ingress_config.get("rules", []):
-            target_service = service_map.get(rule.get("service")) or rule.get("service")
+            target_service_obj = service_map.get(rule.get("service"), {})
+            target_service = target_service_obj.get("name") or rule.get("service")
+            target_port = rule.get("port") or target_service_obj.get("port") or 80
             template_components.append({
                 "path_prefix": rule.get("path", "/"),
                 "service_name": target_service,
+                "port": target_port,
             })
 
         template = env.get_template("ingress-multi.j2")
@@ -72,6 +75,7 @@ def generate_ingress(state):
             template_components.append({
                 "path_prefix": ingress.get("path_prefix", "/"),
                 "service_name": comp.get("name"),
+                "port": comp.get("port", 80),
             })
             send_terminal_message(
                 project_id,
@@ -96,6 +100,7 @@ def generate_ingress(state):
         template = env.get_template("ingress.j2")
         content = template.render(
             app_name=app_name,
+            port=comp.get("port", 80),
             namespace=namespace,
             host=host,
             domain_name=settings.domain_name,
