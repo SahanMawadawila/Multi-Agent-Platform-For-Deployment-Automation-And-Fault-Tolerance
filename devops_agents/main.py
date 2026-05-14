@@ -78,12 +78,17 @@ async def process_job(job):
         comp_name = comp.get("name") or "app"
         comp_local_path = os.path.abspath(f"temp/{name}-{comp_name}")
         await AsyncGitTools.clone_repository(repo_url, comp_local_path)
+        
+        branch_name = f"build-{comp_name}-{build_version}"
+        await AsyncGitTools.create_and_checkout_branch(comp_local_path, branch_name)
+        
         files = await AsyncGitTools.list_files(comp_local_path)
 
         comp_state = {
             "project_id": project_id,
             "build_id": build_id,
             "build_version": build_version,
+            "branch_name": branch_name,
             "local_path": comp_local_path,
             "file_list": files,
             "repo_owner": owner,
