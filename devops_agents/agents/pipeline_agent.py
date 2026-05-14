@@ -74,16 +74,14 @@ def set_github_secret(owner: str, repo: str, secret_name: str, secret_value: str
 
 # ============== WORKFLOW TEMPLATE ==============
 def generate_workflow_content(aws_region: str, ecr_repo: str, version: str, branch_name: str = None, component_path: str = None) -> str:
-    """Generate GitHub Actions workflow for building and pushing a Docker image."""
+    """Generate GitHub Actions workflow for building and pushing an image using Buildpacks."""
     branches = f'[ "{branch_name}" ]' if branch_name else '[ "main", "master" ]'
     
-    # For monorepo: build context is the component folder, Dockerfile is inside it
+    # For monorepo: build context is the component folder
     if component_path:
         build_context = f"./{component_path}"
-        dockerfile_path = f"./{component_path}/Dockerfile"
     else:
         build_context = "."
-        dockerfile_path = "./Dockerfile"
     
     return f"""name: Build and Push
     
@@ -117,14 +115,19 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build, tag, and push image to Amazon ECR
+      - name: Setup pack CLI
+        uses: buildpacks/github-actions/setup-pack@v5.0.0
+
+      - name: Build and push image using Cloud Native Buildpacks
         id: build-image
         env:
           ECR_REGISTRY: ${{{{ steps.login-ecr.outputs.registry }}}}
           IMAGE_TAG: "{version}"
         run: |
-          docker build -f {dockerfile_path} -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG {build_context}
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          pack build $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \\
+            --path {build_context} \\
+            --builder paketobuildpacks/builder-jammy-base \\
+            --publish
 """
 
 # ============== MAIN AGENT ==============

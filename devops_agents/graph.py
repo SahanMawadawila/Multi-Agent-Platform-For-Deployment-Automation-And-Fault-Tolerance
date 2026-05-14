@@ -1,7 +1,6 @@
 import time
 from langgraph.graph import StateGraph, END  
 from state import AgentState, PostProcessingState
-from agents.docker_agent import docker_writing_agent
 from agents.pipeline_agent import pipeline_writing_agent
 from agents.monitor_agent import build_monitor_agent
 from agents.error_fixing_agent import (
@@ -46,8 +45,7 @@ def check_build_status(state):
 # Build the component workflow
 component_workflow = StateGraph(AgentState)
 
-# Nodes - Docker & Pipeline
-component_workflow.add_node("docker_writing_agent", docker_writing_agent)
+# Nodes - Pipeline
 component_workflow.add_node("pipeline_writing_agent", pipeline_writing_agent)
 
 # Nodes - Build Monitor
@@ -74,10 +72,9 @@ def mark_component_failed(state):
 component_workflow.add_node("failed", mark_component_failed)
 
 # Edges
-component_workflow.set_entry_point("docker_writing_agent")
+component_workflow.set_entry_point("pipeline_writing_agent")
 
-# Docker -> Pipeline -> Build Monitor
-component_workflow.add_edge("docker_writing_agent", "pipeline_writing_agent")
+# Pipeline -> Build Monitor
 component_workflow.add_edge("pipeline_writing_agent", "build_monitor_agent")
 
 # Build Monitor Routing

@@ -26,7 +26,7 @@ async def read_file(
     """Reads a file from the repository.
     
     Args:
-        file_path: Relative path to the file (e.g., 'Dockerfile', 'package.json')
+        file_path: Relative path to the file (e.g., 'package.json', 'project.toml')
     """
     local_path = state["local_path"]
     project_id = state.get("project_id", "")
@@ -42,7 +42,7 @@ async def write_file(
     """Writes content to a file in the repository.
     
     Args:
-        file_path: Relative path to the file (e.g., 'Dockerfile')
+        file_path: Relative path to the file (e.g., 'package.json')
         content: The content to write to the file
     """
     local_path = state["local_path"]
@@ -84,7 +84,7 @@ async def commit_and_push(
 # Schema for planning
 class FixStep(BaseModel):
     id: int = Field(..., description="Progressive step number starting from 1")
-    task: str = Field(..., description="Description of the fix task (e.g., 'Update Dockerfile to use node:18')")
+    task: str = Field(..., description="Description of the fix task (e.g., 'Add missing express dependency to package.json')")
 
 class FixPlan(BaseModel):
     explanation: str = Field(..., description="High-level explanation of why the build failed and how the steps fix it")
@@ -106,7 +106,7 @@ ANALYZER_PROMPT = """You are a DevOps analysis expert. Your job is to investigat
 3. Identify exactly why the build failed.
 4. Provide a clear, technical summary of the root cause.
 
-You are NOT allowed to do changes to the codebase, unless it is a Dockerfile, config files or build scripts like yml files.
+You are NOT allowed to do changes to the codebase, unless it is an application config file, project dependencies (like package.json, pom.xml), build scripts, or buildpack configurations (like project.toml).
 Do NOT attempt to fix it. Just analyze and report your findings.
 """
 
@@ -163,10 +163,10 @@ async def error_analyzer_agent(state):
 PLANNER_PROMPT = """You are a DevOps architect. Based on the analysis of a build failure, create a step-by-step resolution plan.
 
 Each step should be small and verifiable. For example:
-- Step 1: Update Dockerfile to fix syntax error in RUN command.
-- Step 2: Add missing 'express' dependency to package.json.
+- Step 1: Add missing 'express' dependency to package.json.
+- Step 2: Update project.toml to specify the correct buildpack version.
 
-Do not suggest more than 3 steps. Each step MUST be actionable by a code-writing agent.
+Do not suggest more than 3 steps. Each step MUST be actionable by a code-writing agent. Note that we use Cloud Native Buildpacks, so there is NO Dockerfile to update.
 """
 
 async def error_planner_agent(state):
