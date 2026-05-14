@@ -7,7 +7,7 @@ Used as:
   3. Serialization for Kafka/WebSocket delivery
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Literal, Union
 from datetime import datetime
 
@@ -73,6 +73,21 @@ class ApplicationComponent(BaseModel):
     env_variables: List[EnvVariable] = Field(default_factory=list, description="Environment variables for this component")
     ingress: IngressSpec = Field(default_factory=IngressSpec)
 
+    @field_validator('resources', mode='before')
+    @classmethod
+    def default_resources(cls, v):
+        return v if v is not None else {}
+
+    @field_validator('env_variables', mode='before')
+    @classmethod
+    def default_env(cls, v):
+        return v if v is not None else []
+
+    @field_validator('ingress', mode='before')
+    @classmethod
+    def default_ingress(cls, v):
+        return v if v is not None else {}
+
 
 class InfrastructureComponent(BaseModel):
     """A pre-built infrastructure component (uses Docker Hub image, only K8s manifests needed)."""
@@ -92,6 +107,21 @@ class InfrastructureComponent(BaseModel):
         None,
         description="Optional any snippet of yaml manifest found in the codebase for this infrastructure component"
     )
+
+    @field_validator('resources', mode='before')
+    @classmethod
+    def default_resources(cls, v):
+        return v if v is not None else {}
+
+    @field_validator('env_variables', mode='before')
+    @classmethod
+    def default_env(cls, v):
+        return v if v is not None else []
+
+    @field_validator('credentials', mode='before')
+    @classmethod
+    def default_creds(cls, v):
+        return v if v is not None else {}
 
 
 class Connection(BaseModel):
