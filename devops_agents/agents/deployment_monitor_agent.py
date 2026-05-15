@@ -53,14 +53,30 @@ async def deployment_monitor_agent(state):
         if process.returncode != 0:
             send_terminal_message(project_id, f"❌ {app_name} rollout failed: {stderr.decode()}\n\r", comp_name)
             
-            # Fetch logs for debugging
-            logs_proc = await asyncio.create_subprocess_exec(
-                "kubectl", "logs", f"deployment/{app_name}", "-n", namespace, "--tail=50",
+            # Fetch logs for debugging by finding the exact pod (avoiding label overlap with infra like postgresql)
+            pod_name_proc = await asyncio.create_subprocess_shell(
+                f"kubectl get pods -n {namespace} --no-headers | grep '^{app_name}-[0-9a-f]' | head -n 1 | awk '{{print $1}}'",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
+            pod_name_out, _ = await pod_name_proc.communicate()
+            exact_pod_name = pod_name_out.decode().strip()
+            
+            if exact_pod_name:
+                logs_proc = await asyncio.create_subprocess_exec(
+                    "kubectl", "logs", exact_pod_name, "-n", namespace, "--tail=100",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            else:
+                logs_proc = await asyncio.create_subprocess_exec(
+                    "kubectl", "logs", f"deployment/{app_name}", "-n", namespace, "--tail=100",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            
             logs_out, _ = await logs_proc.communicate()
-            send_terminal_message(project_id, f"📋 Logs: {logs_out.decode()[:500]}\n\r", comp_name)
+            send_terminal_message(project_id, f"📋 Logs ({exact_pod_name or 'deployment'}): {logs_out.decode()[:500]}\n\r", comp_name)
             
             error_log = f"=== App: {app_name} ===\nRollout Error: {stderr.decode()}\nPod Logs:\n{logs_out.decode()[:2000]}\n\n"
             aggregated_error_logs += error_log
@@ -90,14 +106,30 @@ async def deployment_monitor_agent(state):
         else:
             send_terminal_message(project_id, f"⚠️ {app_name} deployed but health check failed.\n\r", comp_name)
             
-            logs_proc = await asyncio.create_subprocess_exec(
-                "kubectl", "logs", f"deployment/{app_name}", "-n", namespace, "--tail=50",
+            pod_name_proc = await asyncio.create_subprocess_shell(
+                f"kubectl get pods -n {namespace} --no-headers | grep '^{app_name}-[0-9a-f]' | head -n 1 | awk '{{print $1}}'",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
+            pod_name_out, _ = await pod_name_proc.communicate()
+            exact_pod_name = pod_name_out.decode().strip()
+            
+            if exact_pod_name:
+                logs_proc = await asyncio.create_subprocess_exec(
+                    "kubectl", "logs", exact_pod_name, "-n", namespace, "--tail=100",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            else:
+                logs_proc = await asyncio.create_subprocess_exec(
+                    "kubectl", "logs", f"deployment/{app_name}", "-n", namespace, "--tail=100",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                
             logs_out, _ = await logs_proc.communicate()
             
-            error_log = f"=== App: {app_name} ===\nHealth Check Failed for {health_url}.\nPod Logs:\n{logs_out.decode()[:2000]}\n\n"
+            error_log = f"=== App: {app_name} ===\nHealth Check Failed for {health_url}.\nPod Logs ({exact_pod_name or 'deployment'}):\n{logs_out.decode()[:2000]}\n\n"
             aggregated_error_logs += error_log
             all_healthy = False
     

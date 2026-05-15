@@ -23,6 +23,7 @@ Rules:
 - Read actual source/config files to find health check paths (do not guess).
 - Use package.json/pom.xml/pyproject for build/run commands and versions.
 - Populate env_variables from .env/.env.example/config files. For Spring Boot (application.yml/properties), extract ONLY necessary variables that must be overridden at runtime (e.g., database connections, credentials, external service URLs).
+- If the component is a Spring Boot or Java application, set its `resources.memory_limit` to at least "800Mi" to prevent JVM memory calculator errors during deployment.
 - Set ingress.expose true only for user-facing services.
 - For single-app projects, use name "app".
 - Leave image_name empty (it will be generated later).
