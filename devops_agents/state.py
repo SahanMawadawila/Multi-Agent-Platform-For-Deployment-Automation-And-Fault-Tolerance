@@ -22,9 +22,6 @@ class AgentState(TypedDict):
     access_url: Optional[str]
     monitor_logs: Optional[str]
     gitops_commit_id: Optional[str]  # GitOps repo commit SHA for rollback
-    error_fixing_plan: Optional[List[dict]] # List of { "id": int, "task": str, "status": str }
-    current_step_index: int
-    analysis_results: Optional[str]
     start_time: Optional[float]  # time.time() when job started, for duration calc
     component: Optional[Dict[str, Any]]  # ApplicationComponent from the plan
     branch_name: Optional[str]  # Branch to push to (used for multi-project repos)

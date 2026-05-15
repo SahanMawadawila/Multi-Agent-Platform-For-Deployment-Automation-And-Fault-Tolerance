@@ -4,8 +4,6 @@ from state import AgentState, PostProcessingState
 from agents.pipeline_agent import pipeline_writing_agent
 from agents.monitor_agent import build_monitor_agent
 from agents.error_fixing_agent import (
-    error_analyzer_agent,
-    error_planner_agent,
     error_fixing_agent,
     error_fixing_tool_node,
     check_fix_complete,
@@ -25,8 +23,6 @@ def check_build_status(state):
     """Route based on build status after monitoring."""
     build_status = state.get("build_status", "")
     retry_count = state.get("retry_count", 0)
-    plan = state.get("error_fixing_plan", [])
-    step_idx = state.get("current_step_index", 0)
     
     if build_status == "success":
         return "success"
@@ -34,11 +30,7 @@ def check_build_status(state):
     if build_status == "failed":
         if retry_count >= 3:
             return "give_up"
-        
-        if plan and step_idx < len(plan):
-            return "continue_fix"
-        else:
-            return "start_analysis"
+        return "fix_error"
             
     return "give_up"
 
@@ -51,9 +43,7 @@ component_workflow.add_node("pipeline_writing_agent", pipeline_writing_agent)
 # Nodes - Build Monitor
 component_workflow.add_node("build_monitor_agent", build_monitor_agent)
 
-# Nodes - Error Planning & Fixing
-component_workflow.add_node("error_analyzer_agent", error_analyzer_agent)
-component_workflow.add_node("error_planner_agent", error_planner_agent)
+# Nodes - Error Fixing
 component_workflow.add_node("error_fixing_agent", error_fixing_agent)
 component_workflow.add_node("error_fixing_tool", error_fixing_tool_node)
 component_workflow.add_node("finalize_fix", finalize_fix)
@@ -83,15 +73,10 @@ component_workflow.add_conditional_edges(
     check_build_status,
     {
         "success": "k8s_architect_agent",
-        "continue_fix": "error_fixing_agent",
-        "start_analysis": "error_analyzer_agent",
+        "fix_error": "error_fixing_agent",
         "give_up": "failed"
     }
 )
-
-# Error Planning Flow
-component_workflow.add_edge("error_analyzer_agent", "error_planner_agent")
-component_workflow.add_edge("error_planner_agent", "error_fixing_agent")
 
 # Error Execution Flow
 component_workflow.add_conditional_edges(
