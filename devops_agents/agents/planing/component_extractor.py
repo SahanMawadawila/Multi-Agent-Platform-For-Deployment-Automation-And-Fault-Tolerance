@@ -22,7 +22,7 @@ Rules:
 - Find each deployable app component and fill all ApplicationComponent fields.
 - Read actual source/config files to find health check paths (do not guess).
 - Use package.json/pom.xml/pyproject for build/run commands and versions.
-- Populate env_variables from .env/.env.example/config files.
+- Populate env_variables from .env/.env.example/config files. For Spring Boot (application.yml/properties), extract ONLY necessary variables that must be overridden at runtime (e.g., database connections, credentials, external service URLs).
 - Set ingress.expose true only for user-facing services.
 - For single-app projects, use name "app".
 - Leave image_name empty (it will be generated later).
