@@ -20,6 +20,7 @@ async def deployment_monitor_agent(state):
     access_url = f"https://{host}"
     
     all_healthy = True
+    aggregated_error_logs = ""
     
     for comp in components:
         app_name = comp.get("name") or "app"
@@ -61,6 +62,9 @@ async def deployment_monitor_agent(state):
             logs_out, _ = await logs_proc.communicate()
             send_terminal_message(project_id, f"📋 Logs: {logs_out.decode()[:500]}\n\r", comp_name)
             
+            error_log = f"=== App: {app_name} ===\nRollout Error: {stderr.decode()}\nPod Logs:\n{logs_out.decode()[:2000]}\n\n"
+            aggregated_error_logs += error_log
+            
             all_healthy = False
             continue
         
@@ -85,6 +89,17 @@ async def deployment_monitor_agent(state):
             send_terminal_message(project_id, f"🎉 {app_name} is live!\n\r", comp_name)
         else:
             send_terminal_message(project_id, f"⚠️ {app_name} deployed but health check failed.\n\r", comp_name)
+            
+            logs_proc = await asyncio.create_subprocess_exec(
+                "kubectl", "logs", f"deployment/{app_name}", "-n", namespace, "--tail=50",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            logs_out, _ = await logs_proc.communicate()
+            
+            error_log = f"=== App: {app_name} ===\nHealth Check Failed for {health_url}.\nPod Logs:\n{logs_out.decode()[:2000]}\n\n"
+            aggregated_error_logs += error_log
+            all_healthy = False
     
     # Final result
     if all_healthy:
@@ -98,4 +113,5 @@ async def deployment_monitor_agent(state):
         return {
             "deployment_status": "failed",
             "access_url": access_url,
+            "deployment_error_logs": aggregated_error_logs
         }

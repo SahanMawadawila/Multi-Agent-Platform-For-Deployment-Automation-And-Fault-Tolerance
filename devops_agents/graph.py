@@ -13,6 +13,12 @@ from agents.k8s_architect_agent import k8s_architect_agent
 from agents.ingress_networking import generate_ingress
 from agents.gitops_argocd_agent import gitops_argocd_agent
 from agents.deployment_monitor_agent import deployment_monitor_agent
+from agents.deployment_fixer_agent import (
+    deployment_fixer_agent,
+    deployment_fixer_tool_node,
+    check_deployment_fix_complete,
+    finalize_deployment_fix
+)
 from app.kafka_build_producer import send_build_event
 
 # ==========================================================
@@ -112,6 +118,18 @@ def check_deployment_status(state):
         return "success"
     return "failed"
 
+def check_deployment_status(state):
+    """Route based on deployment status."""
+    status = state.get("deployment_status")
+    retry_count = state.get("retry_count", 0)
+    if status == "success":
+        return "success"
+    if status == "failed":
+        if retry_count >= 3:
+            return "failed"
+        return "fix_deployment"
+    return "failed"
+
 def mark_deployment_success(state):
     """Send success event."""
     access_url = state.get("access_url", "")
@@ -152,6 +170,9 @@ pp_workflow = StateGraph(PostProcessingState)
 pp_workflow.add_node("ingress_generator", generate_ingress)
 pp_workflow.add_node("gitops_argocd", gitops_argocd_agent)
 pp_workflow.add_node("deployment_monitor", deployment_monitor_agent)
+pp_workflow.add_node("deployment_fixer_agent", deployment_fixer_agent)
+pp_workflow.add_node("deployment_fixer_tool", deployment_fixer_tool_node)
+pp_workflow.add_node("finalize_deployment_fix", finalize_deployment_fix)
 pp_workflow.add_node("success", mark_deployment_success)
 pp_workflow.add_node("failed", mark_deployment_failed)
 
@@ -165,7 +186,28 @@ pp_workflow.add_conditional_edges(
     check_deployment_status,
     {
         "success": "success",
+        "fix_deployment": "deployment_fixer_agent",
         "failed": "failed"
+    }
+)
+
+pp_workflow.add_conditional_edges(
+    "deployment_fixer_agent",
+    check_deployment_fix_complete,
+    {
+        "deployment_fixer_tool": "deployment_fixer_tool",
+        "deployment_fixer_agent": "deployment_fixer_agent",
+        "fix_complete": "finalize_deployment_fix"
+    }
+)
+pp_workflow.add_edge("deployment_fixer_tool", "deployment_fixer_agent")
+
+pp_workflow.add_conditional_edges(
+    "finalize_deployment_fix",
+    lambda s: "failed" if s.get("is_app_issue") else "deployment_monitor",
+    {
+        "failed": "failed",
+        "deployment_monitor": "deployment_monitor"
     }
 )
 

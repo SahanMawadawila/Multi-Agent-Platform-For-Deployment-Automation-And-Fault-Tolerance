@@ -32,11 +32,10 @@ class CredentialField(BaseModel):
     editable: bool = Field(True, description="Whether the user can edit this value")
     sensitive: bool = Field(True, description="Whether this is a secret")
 
-
 class ResourceSpec(BaseModel):
     """Resource limits for a Kubernetes deployment."""
-    cpu_limit: str = Field("200m", description="CPU limit (e.g., '200m', '500m', '1')")
-    memory_limit: str = Field("256Mi", description="Memory limit (e.g., '256Mi', '512Mi', '1Gi')")
+    cpu_limit: str = Field("500m", description="CPU limit (e.g., '200m', '500m', '1')")
+    memory_limit: str = Field("512Mi", description="Memory limit (e.g., '256Mi', '512Mi', '1Gi')")
     replicas: int = Field(1, description="Number of pod replicas")
 
 
