@@ -14,7 +14,7 @@ import subprocess
 @tool
 async def read_file_structure(state: Annotated[dict, InjectedState]) -> str:
     """Returns the current list of files in the GitOps repository."""
-    gitops_dir = state["gitops_dir"]
+    gitops_dir = state["gitops_dir"] + "_push"
     files = await AsyncGitTools.list_files(gitops_dir)
     return "\n".join(files)
 
@@ -24,7 +24,7 @@ async def read_file(
     state: Annotated[dict, InjectedState]
 ) -> str:
     """Reads a file from the GitOps repository."""
-    gitops_dir = state["gitops_dir"]
+    gitops_dir = state["gitops_dir"] + "_push"
     project_id = state.get("project_id", "")
     send_terminal_message(project_id, f"📖 Reading {file_path} in GitOps repo\n\r")
     return await AsyncGitTools.read_file(gitops_dir, file_path)
@@ -36,7 +36,7 @@ async def write_file(
     state: Annotated[dict, InjectedState]
 ) -> str:
     """Writes content to a file in the GitOps repository."""
-    gitops_dir = state["gitops_dir"]
+    gitops_dir = state["gitops_dir"] + "_push"
     project_id = state.get("project_id", "")
     
     full_path = os.path.join(gitops_dir, file_path)
@@ -54,7 +54,7 @@ async def commit_and_push(
     state: Annotated[dict, InjectedState]
 ) -> str:
     """Commits and pushes all changes to the GitOps repository."""
-    gitops_dir = state["gitops_dir"]
+    gitops_dir = state["gitops_dir"] + "_push"
     project_id = state.get("project_id", "")
     
     send_terminal_message(project_id, "📤 Pushing fixes to GitOps repository...\n\r")
@@ -63,6 +63,14 @@ async def commit_and_push(
         subprocess.run(["git", "add", "."], cwd=gitops_dir, check=True, capture_output=True)
         subprocess.run(["git", "commit", "-m", commit_message], cwd=gitops_dir, check=True, capture_output=True)
         subprocess.run(["git", "push"], cwd=gitops_dir, check=True, capture_output=True)
+        
+        # Force ArgoCD to sync immediately
+        send_terminal_message(project_id, "🔄 Triggering ArgoCD sync...\n\r")
+        app_name = f"app-{project_id}"
+        subprocess.run(
+            ["kubectl", "annotate", "application", app_name, "-n", "argocd", "argocd.argoproj.io/refresh=hard", "--overwrite"],
+            check=False, capture_output=True
+        )
         return "Successfully committed and pushed changes"
     except subprocess.CalledProcessError as e:
         return f"Error pushing changes: {e.stderr.decode() if e.stderr else str(e)}"
