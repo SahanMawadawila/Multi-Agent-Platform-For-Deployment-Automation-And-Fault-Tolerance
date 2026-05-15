@@ -118,6 +118,7 @@ export function DeploymentPlanEditor({
     if (selectedComponentIndex === null) return;
 
     const newPlan = { ...editablePlan };
+    newPlan.components = [...(editablePlan.components || [])];
     newPlan.components[selectedComponentIndex] = updatedComponent;
 
     setEditablePlan(newPlan);
@@ -128,6 +129,7 @@ export function DeploymentPlanEditor({
     if (selectedConnectionIndex === null) return;
 
     const newPlan = { ...editablePlan };
+    newPlan.connections = [...(editablePlan.connections || [])];
     newPlan.connections[selectedConnectionIndex] = updatedConnection;
 
     setEditablePlan(newPlan);
