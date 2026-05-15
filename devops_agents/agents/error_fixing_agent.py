@@ -119,7 +119,7 @@ async def error_analyzer_agent(state):
     
     send_terminal_message(project_id, "🔍 Analyzing root cause of build failure...\n\r", component_name)
     
-    llm = ChatOpenAI(model="gpt-5.1", api_key=settings.openai_key, temperature=0)
+    llm = ChatOpenAI(model="o4-mini", api_key=settings.openai_key, temperature=0)
     llm_with_tools = llm.bind_tools([read_file_structure, read_file])
     
     messages = [
@@ -178,7 +178,7 @@ async def error_planner_agent(state):
     
     send_terminal_message(project_id, "📋 Creating fix plan...\n\r", component_name)
     
-    llm = ChatOpenAI(model="gpt-5.1", api_key=settings.openai_key, temperature=0)
+    llm = ChatOpenAI(model="o4-mini", api_key=settings.openai_key, temperature=0)
     structured_llm = llm.with_structured_output(FixPlan)
     
     plan = await structured_llm.ainvoke([
@@ -228,7 +228,7 @@ async def error_fixing_agent(state):
         component_name = component.get("name")
         send_terminal_message(project_id, f"🛠️ Executing Step {current_step['id']}: {current_step['task']}...\n\r", component_name)
 
-    llm = ChatOpenAI(model="gpt-5-mini", api_key=settings.openai_key, temperature=0)
+    llm = ChatOpenAI(model="o4-mini", api_key=settings.openai_key, temperature=0)
     llm_with_tools = llm.bind_tools(tools)
     
     system_content = EXECUTOR_PROMPT.format(

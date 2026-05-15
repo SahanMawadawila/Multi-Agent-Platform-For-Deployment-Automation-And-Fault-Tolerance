@@ -81,6 +81,33 @@
             }
         },
         {
+            "label": "Port Forward Loki",
+            "type": "shell",
+            "command": "kubectl",
+            "args": [
+                "port-forward",
+                "svc/loki",
+                "-n",
+                "logging",
+                "3100:3100"
+            ],
+            "isBackground": true,
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^.*$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^Forwarding.*",
+                    "endsPattern": "^Handling.*"
+                }
+            }
+        },
+        {
             "label": "Start All Services",
             "dependsOn": [
                 "1. Start Kafka (Docker Compose)",
