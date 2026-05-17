@@ -1,6 +1,7 @@
 import boto3
 import time
 import base64
+import os
 import requests
 from nacl import public
 from botocore.exceptions import ClientError, EndpointConnectionError, ConnectionClosedError
@@ -72,18 +73,80 @@ def set_github_secret(owner: str, repo: str, secret_name: str, secret_value: str
     except Exception:
         return False
 
+def _normalize_component_path(component_path: str | None) -> str | None:
+  if not component_path:
+    return None
+  if component_path in (".", "./", ".\\", ""):
+    return None
+  clean = component_path.replace("\\", "/")
+  clean = clean.lstrip("./")
+  return clean or None
+
+
+def _buildpack_env_flags(component: dict, component_path: str | None, local_path: str) -> tuple[str, str]:
+  """Return (build_path, env_flags) for pack build."""
+  project_type = (component.get("project_type") or "").lower()
+  package_manager = (component.get("package_manager") or "").lower()
+  version = component.get("version")
+
+  env_flags: list[str] = []
+  build_path = component_path or "."
+
+  # Version pinning for buildpacks (optional but improves reliability)
+  if version:
+    if project_type in ("python",):
+      env_flags.append(f"--env BP_PYTHON_VERSION={version}")
+    elif project_type in ("node", "nodejs", "javascript", "typescript"):
+      env_flags.append(f"--env BP_NODE_VERSION={version}")
+    elif project_type in ("springboot", "java"):
+      env_flags.append(f"--env BP_JVM_VERSION={version}")
+    elif project_type in ("go", "golang"):
+      env_flags.append(f"--env BP_GO_VERSION={version}")
+
+  # Monorepo handling
+  if component_path:
+    root_pnpm = os.path.isfile(os.path.join(local_path, "pnpm-lock.yaml"))
+    root_yarn = os.path.isfile(os.path.join(local_path, "yarn.lock"))
+    root_npm = os.path.isfile(os.path.join(local_path, "package-lock.json"))
+
+    if project_type in ("springboot", "java") or package_manager in ("maven", "gradle"):
+      root_pom = os.path.isfile(os.path.join(local_path, "pom.xml"))
+      root_gradle = os.path.isfile(os.path.join(local_path, "build.gradle")) or os.path.isfile(os.path.join(local_path, "build.gradle.kts"))
+      
+      if (package_manager == "maven" and root_pom) or (package_manager == "gradle" and root_gradle):
+        build_path = "."
+        if package_manager == "maven":
+          env_flags.append(f"--env BP_MAVEN_BUILT_MODULE={component_path}")
+        elif package_manager == "gradle":
+          env_flags.append(f"--env BP_GRADLE_BUILT_MODULE={component_path}")
+      else:
+        build_path = component_path
+    elif project_type in ("node", "nodejs", "javascript", "typescript") and (root_pnpm or root_yarn or root_npm):
+      build_path = "."
+      env_flags.append(f"--env BP_NODE_PROJECT_PATH={component_path}")
+
+  env_block = ""
+  if env_flags:
+    env_block = "\\\n          " + " \\\n          ".join(env_flags) + " "
+
+  return build_path, env_block
+
+
 # ============== WORKFLOW TEMPLATE ==============
-def generate_workflow_content(aws_region: str, ecr_repo: str, version: str, branch_name: str = None, component_path: str = None) -> str:
-    """Generate GitHub Actions workflow for building and pushing an image using Buildpacks."""
-    branches = f'[ "{branch_name}" ]' if branch_name else '[ "main", "master" ]'
-    
-    # For monorepo: build context is root, but we pass path env vars for buildpacks
-    buildpack_envs = ""
-    if component_path:
-        clean_path = component_path.replace("./", "").replace(".\\", "")
-        buildpack_envs = f"\\\n            --env BP_NODE_PROJECT_PATH={clean_path} \\\n            --env BP_GO_TARGETS=./{clean_path} \\\n            --env BP_MAVEN_BUILT_MODULE={clean_path} "
-    
-    return f"""name: Build and Push
+def generate_workflow_content(
+  aws_region: str,
+  ecr_repo: str,
+  version: str,
+  branch_name: str = None,
+  buildpack_path: str = ".",
+  buildpack_envs: str = "",
+) -> str:
+  """Generate GitHub Actions workflow for building and pushing an image using Cloud Native Buildpacks."""
+  branches = f'[ "{branch_name}" ]' if branch_name else '[ "main", "master" ]'
+  
+  buildpack_path = buildpack_path or "."
+
+  return f"""name: Build and Push
     
 on:
   push:
@@ -124,10 +187,11 @@ jobs:
           ECR_REGISTRY: ${{{{ steps.login-ecr.outputs.registry }}}}
           IMAGE_TAG: "{version}"
         run: |
+          rm -f {buildpack_path}/mvnw {buildpack_path}/mvnw.cmd
           pack build $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \\
-            --path . {buildpack_envs}\\
-            --builder paketobuildpacks/builder-jammy-base \\
-            --publish
+          --path {buildpack_path} {buildpack_envs}\\
+          --builder paketobuildpacks/builder-jammy-base \\
+          --publish
 """
 
 # ============== MAIN AGENT ==============
@@ -172,10 +236,19 @@ async def pipeline_writing_agent(state: AgentState):
     
     # Generate and push workflow
     send_terminal_message(project_id, f"📝 Generating GitHub Actions workflow (version={build_version})...\n\r", component_name)
-    component_path = component.get("path")
-    if component_path in (".", "./", ""):
-        component_path = None
-    workflow_content = generate_workflow_content(settings.aws_region, ecr_repo_name, build_version, branch_name, component_path)
+    raw_component_path = component.get("path")
+    component_path = _normalize_component_path(raw_component_path)
+    
+    buildpack_path, buildpack_envs = _buildpack_env_flags(component, component_path, local_path)
+
+    workflow_content = generate_workflow_content(
+      aws_region=settings.aws_region,
+      ecr_repo=ecr_repo_name,
+      version=build_version,
+      branch_name=branch_name,
+      buildpack_path=buildpack_path,
+      buildpack_envs=buildpack_envs,
+    )
 
     workflow_name = "ci.yml"
     if component_name:
@@ -185,10 +258,10 @@ async def pipeline_writing_agent(state: AgentState):
         local_path,
         f".github/workflows/{workflow_name}",
         workflow_content,
-        f"feat: Update pipeline for version {build_version}"
+        f"feat: Update pipeline for version {build_version} using Buildpacks"
     )
     
-    send_terminal_message(project_id, "✅ CI/CD pipeline configured successfully!\n\r", component_name)
+    send_terminal_message(project_id, "✅ CI/CD pipeline configured successfully (Buildpacks only)!\n\r", component_name)
     
     return {
         "workflow_content": workflow_content,

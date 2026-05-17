@@ -11,7 +11,6 @@ from .agent_runner import run_agent
 class ConnectionExtractionResult(BaseModel):
     """Structured output for connection extraction."""
     connections: List[Connection] = Field(default_factory=list)
-    errors: List[str] = Field(default_factory=list, description="Validation errors that should block deployment")
 
 
 SYSTEM_PROMPT = """You are a deployment planning sub-agent focused ONLY on connections.
@@ -28,7 +27,7 @@ Rules:
     Do not update only one key. Include every variable that participates in establishing the connection.
     Previous values may include localhost, docker-compose service names, or local k8s names; rewrite them to
     the correct in-cluster service name or resolved value.
-- If a required env key is missing for a connection, add a descriptive entry to errors.
+- If a required env key is missing for a connection, add the key to env_updates with a placeholder value like "TODO_PLEASE_FILL_IN_DEPLOYMENT". Do not guess the value.
 - Call ConnectionExtractionResult exactly once.
 """
 
@@ -110,8 +109,5 @@ async def run_connection_mapper(
         agent_state=agent_state,
         logger=logger,
     )
-
-    if result.errors:
-        raise ValueError("; ".join(result.errors))
 
     return result.connections

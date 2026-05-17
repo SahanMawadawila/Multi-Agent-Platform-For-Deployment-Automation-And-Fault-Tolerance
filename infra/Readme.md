@@ -68,9 +68,15 @@ powershell -ExecutionPolicy Bypass -File infra/clean_up/cleanup_stucking_resourc
 ```
 
 ### 2) Cleanup ECR resources
+```bash
+powershell -ExecutionPolicy Bypass -File infra/clean_up/cleanup_ecr_repos.ps1
+```
 
 Force deletes all ECR repositories and images in the region.
 ### 3) Cleanup Local Temp Projects
+```bash
+powershell -ExecutionPolicy Bypass -File infra/clean_up/cleanup_temp_projects.ps1
+```
 
 Deletes all temporary project files in `devops_agents/temp`.
 ### 4) Cleanup Database
