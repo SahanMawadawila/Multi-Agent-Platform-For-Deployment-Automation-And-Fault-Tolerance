@@ -77,11 +77,12 @@ def generate_workflow_content(aws_region: str, ecr_repo: str, version: str, bran
     """Generate GitHub Actions workflow for building and pushing an image using Buildpacks."""
     branches = f'[ "{branch_name}" ]' if branch_name else '[ "main", "master" ]'
     
-    # For monorepo: build context is root, but we pass path env vars for buildpacks
-    buildpack_envs = ""
+    clean_path = "."
     if component_path:
-        clean_path = component_path.replace("./", "").replace(".\\", "")
-        buildpack_envs = f"\\\n            --env BP_NODE_PROJECT_PATH={clean_path} \\\n            --env BP_GO_TARGETS=./{clean_path} \\\n            --env BP_MAVEN_BUILT_MODULE={clean_path} "
+        # Resolve to valid path, removing trailing slashes but keeping it clean
+        clean_path = component_path.replace("./", "").replace(".\\", "").strip("/")
+        if not clean_path:
+            clean_path = "."
     
     return f"""name: Build and Push
     
@@ -125,7 +126,7 @@ jobs:
           IMAGE_TAG: "{version}"
         run: |
           pack build $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \\
-            --path . {buildpack_envs}\\
+            --path {clean_path} \\
             --builder paketobuildpacks/builder-jammy-base \\
             --publish
 """

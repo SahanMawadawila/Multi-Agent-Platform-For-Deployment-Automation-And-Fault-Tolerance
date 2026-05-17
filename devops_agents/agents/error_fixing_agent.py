@@ -108,7 +108,7 @@ async def error_fixing_agent(state):
     component = state.get("component") or {}
     component_name = component.get("name")
     
-    llm = ChatOpenAI(model="o4-mini", api_key=settings.openai_key)
+    llm = ChatOpenAI(model="gpt-4o-mini", api_key=settings.openai_key)
     llm_with_tools = llm.bind_tools(tools)
     
     if not error_fixing_messages:
@@ -139,8 +139,16 @@ async def error_fixing_agent(state):
             return {"error_fixing_messages": [new_human, response]}
         else:
             # Just continuing the current reasoning loop (e.g. after reading a file)
+            appended_messages = []
+            if not getattr(last_message, "tool_calls", None):
+                reminder = HumanMessage(content="You must use a tool to proceed. Use tools to read files, write, or commit. If you are finished, invoke the 'FixComplete' tool.")
+                llm_messages.append(reminder)
+                appended_messages.append(reminder)
+            
             response = await llm_with_tools.ainvoke(llm_messages)
-            return {"error_fixing_messages": [response]}
+            appended_messages.append(response)
+            
+            return {"error_fixing_messages": appended_messages}
 
 # ============== GRAPH HELPERS ==============
 async def error_fixing_tool_node(state):

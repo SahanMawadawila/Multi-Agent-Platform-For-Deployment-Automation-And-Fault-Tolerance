@@ -103,7 +103,7 @@ async def deployment_fixer_agent(state):
     deployment_fixing_messages = state.get("deployment_fixing_messages", [])
     error_logs = state.get("deployment_error_logs", "No logs")
     
-    llm = ChatOpenAI(model="o4-mini", api_key=settings.openai_key)
+    llm = ChatOpenAI(model="gpt-4o-mini", api_key=settings.openai_key)
     llm_with_tools = llm.bind_tools(tools)
     
     if not deployment_fixing_messages:
@@ -132,8 +132,16 @@ async def deployment_fixer_agent(state):
             response = await llm_with_tools.ainvoke(llm_messages)
             return {"deployment_fixing_messages": [new_human, response]}
         else:
+            appended_messages = []
+            if not getattr(last_message, "tool_calls", None):
+                reminder = HumanMessage(content="You must use a tool to proceed. Use tools to read files, write, or commit. If you are finished, invoke the 'DeploymentFixComplete' tool.")
+                llm_messages.append(reminder)
+                appended_messages.append(reminder)
+            
             response = await llm_with_tools.ainvoke(llm_messages)
-            return {"deployment_fixing_messages": [response]}
+            appended_messages.append(response)
+            
+            return {"deployment_fixing_messages": appended_messages}
 
 # ============== GRAPH HELPERS ==============
 async def deployment_fixer_tool_node(state):
