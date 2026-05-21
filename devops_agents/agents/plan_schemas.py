@@ -7,9 +7,62 @@ Used as:
   3. Serialization for Kafka/WebSocket delivery
 """
 
-from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Dict, Literal, Union
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Any, List, Optional, Dict, Literal, Union
 from datetime import datetime
+
+
+# ---------------------------------------------------------------------------
+# Helpers – coerce common LLM output quirks
+# ---------------------------------------------------------------------------
+
+def _coerce_int(v: Any) -> int:
+    """LLMs sometimes return numeric values as strings (e.g., '3000')."""
+    if isinstance(v, int):
+        return v
+    if isinstance(v, str):
+        try:
+            return int(v)
+        except ValueError:
+            pass
+    if isinstance(v, float):
+        return int(v)
+    return v  # let Pydantic raise its own error
+
+
+def _coerce_bool(v: Any) -> bool:
+    """LLMs sometimes return booleans as strings ('true'/'false')."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        if v.lower() in ("true", "1", "yes"):
+            return True
+        if v.lower() in ("false", "0", "no"):
+            return False
+    return v  # let Pydantic raise its own error
+
+
+def _coerce_env_item(item: Any) -> Any:
+    """Coerce a single env variable item that the LLM may have flattened.
+
+    Common LLM mistakes:
+      - Returns a plain string like "PORT=3000" -> split into key/value
+      - Returns a flat dict {"PORT": "3000"} -> wrap into EnvVariable shape
+      - Returns a dict with only key/value but missing source/editable/sensitive -> fine, Pydantic defaults handle it
+    """
+    if isinstance(item, str):
+        # e.g. "PORT=3000" or just "PORT"
+        if "=" in item:
+            k, _, v = item.partition("=")
+            return {"key": k.strip(), "value": v.strip(), "source": "detected"}
+        return {"key": item.strip(), "value": "", "source": "detected"}
+    if isinstance(item, dict) and "key" not in item:
+        # Flat dict like {"PORT": "3000"} - take the first key/value pair
+        for k, v in item.items():
+            return {"key": str(k), "value": str(v) if v is not None else "", "source": "detected"}
+        return item  # empty dict, let Pydantic handle
+    return item  # already a proper dict or EnvVariable
+
 
 
 class EnvVariable(BaseModel):
@@ -22,6 +75,33 @@ class EnvVariable(BaseModel):
     editable: bool = Field(True, description="Whether the user can edit this value")
     sensitive: bool = Field(False, description="Whether this is a secret/password")
 
+    @field_validator('value', mode='before')
+    @classmethod
+    def coerce_value_to_str(cls, v):
+        """LLM might return int/float/bool for env values; always stringify."""
+        if v is None:
+            return ""
+        return str(v)
+
+    @field_validator('editable', mode='before')
+    @classmethod
+    def coerce_editable(cls, v):
+        return _coerce_bool(v) if v is not None else True
+
+    @field_validator('sensitive', mode='before')
+    @classmethod
+    def coerce_sensitive(cls, v):
+        return _coerce_bool(v) if v is not None else False
+
+    @field_validator('source', mode='before')
+    @classmethod
+    def coerce_source(cls, v):
+        """Normalise unknown source values to 'detected'."""
+        allowed = {"detected", "override", "auto_generate", "default"}
+        if isinstance(v, str) and v not in allowed:
+            return "detected"
+        return v if v is not None else "detected"
+
 
 class CredentialField(BaseModel):
     """A single credential field for infrastructure components."""
@@ -32,11 +112,50 @@ class CredentialField(BaseModel):
     editable: bool = Field(True, description="Whether the user can edit this value")
     sensitive: bool = Field(True, description="Whether this is a secret")
 
+    @field_validator('value', mode='before')
+    @classmethod
+    def coerce_value_to_str(cls, v):
+        if v is None:
+            return ""
+        return str(v)
+
+    @field_validator('source', mode='before')
+    @classmethod
+    def coerce_source(cls, v):
+        allowed = {"detected", "auto_generate"}
+        if isinstance(v, str) and v not in allowed:
+            return "auto_generate"
+        return v if v is not None else "auto_generate"
+
+    @field_validator('editable', mode='before')
+    @classmethod
+    def coerce_editable(cls, v):
+        return _coerce_bool(v) if v is not None else True
+
+    @field_validator('sensitive', mode='before')
+    @classmethod
+    def coerce_sensitive(cls, v):
+        return _coerce_bool(v) if v is not None else True
+
 class ResourceSpec(BaseModel):
     """Resource limits for a Kubernetes deployment."""
     cpu_limit: str = Field("500m", description="CPU limit (e.g., '200m', '500m', '1')")
     memory_limit: str = Field("512Mi", description="Memory limit (e.g., '256Mi', '512Mi', '1Gi')")
     replicas: int = Field(1, description="Number of pod replicas")
+
+    @field_validator('cpu_limit', 'memory_limit', mode='before')
+    @classmethod
+    def coerce_str(cls, v):
+        if v is None:
+            return "500m"  # safe default
+        return str(v)
+
+    @field_validator('replicas', mode='before')
+    @classmethod
+    def coerce_replicas(cls, v):
+        if v is None:
+            return 1
+        return _coerce_int(v)
 
 
 class StorageSpec(BaseModel):
@@ -44,11 +163,36 @@ class StorageSpec(BaseModel):
     size: str = Field("1Gi", description="Storage size (e.g., '1Gi', '5Gi')")
     storage_class: str = Field("gp2", description="Kubernetes storage class")
 
+    @model_validator(mode='before')
+    @classmethod
+    def coerce_from_string(cls, data):
+        """LLM might return just a size string like '5Gi' instead of the full dict."""
+        if isinstance(data, str):
+            return {"size": data, "storage_class": "gp2"}
+        if data is None:
+            return {"size": "1Gi", "storage_class": "gp2"}
+        return data
+
 
 class IngressSpec(BaseModel):
     """Ingress configuration for a component."""
     path_prefix: str = Field("/", description="URL path prefix for routing (e.g., '/', '/api')")
     expose: bool = Field(True, description="Whether to expose this component via ingress")
+
+    @model_validator(mode='before')
+    @classmethod
+    def coerce_from_string(cls, data):
+        """LLM might return just a path string like '/api' instead of the full dict."""
+        if isinstance(data, str):
+            return {"path_prefix": data, "expose": True}
+        if data is None:
+            return {"path_prefix": "/", "expose": True}
+        return data
+
+    @field_validator('expose', mode='before')
+    @classmethod
+    def coerce_expose(cls, v):
+        return _coerce_bool(v) if v is not None else True
 
 
 class ApplicationComponent(BaseModel):
@@ -72,6 +216,31 @@ class ApplicationComponent(BaseModel):
     env_variables: List[EnvVariable] = Field(default_factory=list, description="Environment variables for this component")
     ingress: IngressSpec = Field(default_factory=IngressSpec)
 
+    @field_validator('port', mode='before')
+    @classmethod
+    def coerce_port(cls, v):
+        return _coerce_int(v)
+
+    @field_validator('build_image', 'needs_build_step', mode='before')
+    @classmethod
+    def coerce_bools(cls, v):
+        return _coerce_bool(v) if v is not None else True
+
+    @field_validator('version', mode='before')
+    @classmethod
+    def coerce_version(cls, v):
+        """LLM may return version as int/float (e.g., 18 instead of '18')."""
+        if v is None:
+            return ""
+        return str(v)
+
+    @field_validator('build_command', 'run_command', 'image_name', mode='before')
+    @classmethod
+    def coerce_str_fields(cls, v):
+        if v is None:
+            return ""
+        return str(v)
+
     @field_validator('resources', mode='before')
     @classmethod
     def default_resources(cls, v):
@@ -80,7 +249,11 @@ class ApplicationComponent(BaseModel):
     @field_validator('env_variables', mode='before')
     @classmethod
     def default_env(cls, v):
-        return v if v is not None else []
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [_coerce_env_item(item) for item in v]
+        return v
 
     @field_validator('ingress', mode='before')
     @classmethod
@@ -112,15 +285,55 @@ class InfrastructureComponent(BaseModel):
     def default_resources(cls, v):
         return v if v is not None else {}
 
+    @field_validator('port', mode='before')
+    @classmethod
+    def coerce_port(cls, v):
+        return _coerce_int(v)
+
+    @field_validator('build_image', mode='before')
+    @classmethod
+    def coerce_build_image(cls, v):
+        return _coerce_bool(v) if v is not None else False
+
+    @field_validator('storage', mode='before')
+    @classmethod
+    def coerce_storage(cls, v):
+        """LLM might send a string like '5Gi' or null."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return {"size": v, "storage_class": "gp2"}
+        return v
+
     @field_validator('env_variables', mode='before')
     @classmethod
     def default_env(cls, v):
-        return v if v is not None else []
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [_coerce_env_item(item) for item in v]
+        return v
 
     @field_validator('credentials', mode='before')
     @classmethod
     def default_creds(cls, v):
-        return v if v is not None else {}
+        if v is None:
+            return {}
+        if isinstance(v, dict):
+            coerced = {}
+            for key, val in v.items():
+                if isinstance(val, str):
+                    # LLM returned a plain string instead of a CredentialField dict – wrap it
+                    coerced[key] = {
+                        "value": val,
+                        "source": "detected",
+                        "editable": True,
+                        "sensitive": True,
+                    }
+                else:
+                    coerced[key] = val
+            return coerced
+        return v
 
 
 class Connection(BaseModel):
@@ -133,6 +346,23 @@ class Connection(BaseModel):
         description="All env variables updated for this connection",
     )
 
+    @field_validator('scope', mode='before')
+    @classmethod
+    def coerce_scope(cls, v):
+        allowed = {"internal", "external"}
+        if isinstance(v, str) and v.lower() not in allowed:
+            return "internal"
+        return v.lower() if isinstance(v, str) else v
+
+    @field_validator('env_updates', mode='before')
+    @classmethod
+    def coerce_env_updates(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [_coerce_env_item(item) for item in v]
+        return v
+
 
 class IngressRule(BaseModel):
     """A single ingress routing rule."""
@@ -140,12 +370,27 @@ class IngressRule(BaseModel):
     service: str = Field(..., description="Target service name")
     port: int = Field(..., description="Target service port")
 
+    @field_validator('port', mode='before')
+    @classmethod
+    def coerce_port(cls, v):
+        return _coerce_int(v)
+
 
 class IngressConfig(BaseModel):
     """Global ingress configuration."""
     host: str = Field(..., description="Hostname for the ingress (e.g., 'app-{project_id}.flowpilotai.me')")
     tls: bool = Field(True, description="Whether to enable TLS/HTTPS")
     rules: List[IngressRule] = Field(default_factory=list, description="Routing rules")
+
+    @field_validator('tls', mode='before')
+    @classmethod
+    def coerce_tls(cls, v):
+        return _coerce_bool(v) if v is not None else True
+
+    @field_validator('rules', mode='before')
+    @classmethod
+    def default_rules(cls, v):
+        return v if v is not None else []
 
 
 class DeploymentPlan(BaseModel):
