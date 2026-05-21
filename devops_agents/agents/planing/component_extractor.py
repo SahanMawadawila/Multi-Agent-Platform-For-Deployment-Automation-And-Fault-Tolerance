@@ -22,7 +22,12 @@ Rules:
 - Find each deployable app component and fill all ApplicationComponent fields.
 - Read actual source/config files to find health check paths (do not guess).
 - Use package.json/pom.xml/pyproject for build/run commands and versions.
-- Populate env_variables from .env/.env.example/config files. For Spring Boot (application.yml/properties), extract ONLY necessary variables that must be overridden at runtime (e.g., database connections, credentials, external service URLs).
+- Populate env_variables with variables that are likely to change at runtime (database URLs,
+  credentials, ports, external service URLs, API keys, feature flags).
+  Always use the ACTUAL VALUES found in source/config files as the value.
+  For example, if application.yml has `username: postgres`, set value="postgres".
+  If a .env file has `DB_PORT=5433`, set value="5433".
+  Extract values AS-IS from the code — do not modify or rewrite them.
 - If the component is a Spring Boot or Java application, set its `resources.memory_limit` to at least "800Mi" to prevent JVM memory calculator errors during deployment.
 - Set ingress.expose true only for user-facing services.
 - For single-app projects, use name "app".

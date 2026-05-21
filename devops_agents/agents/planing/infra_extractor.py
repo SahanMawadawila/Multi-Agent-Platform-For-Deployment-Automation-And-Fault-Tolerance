@@ -28,6 +28,7 @@ Rules:
 - If scope is "project", set owner_app.
 - If scope is "project", name must be "<appname>-<infraname>".
 - If any infra-only YAML/compose/Helm snippet exists, attach it as manifest_yaml for that component.
+- Do NOT extract an infrastructure component if an application component already serves the same purpose or provides the same service. Review the provided application components carefully to prevent duplication.
 - Call InfraExtractionResult exactly once.
 """
 

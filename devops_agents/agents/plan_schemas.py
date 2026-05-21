@@ -364,6 +364,21 @@ class Connection(BaseModel):
         return v
 
 
+class EnvCorrection(BaseModel):
+    """A single env variable correction identified by the plan reviewer."""
+    component_name: str = Field(..., description="Name of the component whose env variable needs correction")
+    key: str = Field(..., description="Env variable key to correct")
+    corrected_value: str = Field(..., description="The corrected value for Kubernetes deployment")
+    reason: str = Field("", description="Brief reason for this correction")
+
+    @field_validator('corrected_value', mode='before')
+    @classmethod
+    def coerce_value_to_str(cls, v):
+        if v is None:
+            return ""
+        return str(v)
+
+
 class IngressRule(BaseModel):
     """A single ingress routing rule."""
     path: str = Field(..., description="URL path (e.g., '/', '/api')")

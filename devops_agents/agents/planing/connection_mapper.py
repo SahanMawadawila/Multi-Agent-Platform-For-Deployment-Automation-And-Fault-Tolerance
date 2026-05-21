@@ -23,6 +23,9 @@ Rules:
 - Local env values may reference different names (localhost, docker-compose service names, etc.).
     Use the provided application/infra component names to rewrite internal connection targets and env_updates
     so they match the K8s service names exactly.
+- Port Resolution: Always use the exact 'port' defined in the target component. Do NOT carry over local or docker-compose specific internal ports if they differ from the target component's port.
+- Localhost Stripping: Rewrite any 'localhost', '127.0.0.1', or '0.0.0.0' references in clustered application configurations (e.g., connection strings, advertised listeners) to use the exact in-cluster service name. Localhost refers to the pod itself and will not work for cross-pod communication.
+- Deduplication: If a connection target seems to be satisfied by both an Application Component and an Infrastructure Component, ALWAYS prefer the Application Component's exact name and port, overriding the Infrastructure component.
 - For each connection, populate env_updates with ALL env variables required for this connection to work in K8s.
     Do not update only one key. Include every variable that participates in establishing the connection.
     Previous values may include localhost, docker-compose service names, or local k8s names; rewrite them to

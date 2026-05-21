@@ -17,7 +17,7 @@ from langgraph.prebuilt import InjectedState
 from agents.plan_schemas import DeploymentPlan, IngressConfig, IngressRule, EnvVariable
 from agents.planing.component_extractor import run_component_extractor
 from agents.planing.infra_extractor import run_infra_extractor
-from agents.planing.connection_mapper import run_connection_mapper
+from agents.planing.plan_reviewer import run_plan_reviewer
 from tools.git_tools import AsyncGitTools
 from config.settings import settings
 
@@ -197,7 +197,7 @@ async def run_deployment_planner(
         logger=logger,
     )
 
-    connections = await run_connection_mapper(
+    review_result = await run_plan_reviewer(
         file_list_str=file_list_str,
         local_path=local_path,
         project_id=project_id,
@@ -207,6 +207,8 @@ async def run_deployment_planner(
         tools=tools,
         logger=logger,
     )
+
+    connections = review_result.connections
 
     def _update_component_env(component, env_key: str, value: str) -> None:
         if not env_key or value is None:
@@ -229,7 +231,15 @@ async def run_deployment_planner(
         )
         component.env_variables = envs
 
-    # Override env values based on env_updates.
+    # Apply env corrections from plan reviewer.
+    all_components = list(app_components) + list(infra_components)
+    for correction in review_result.env_corrections:
+        for component in all_components:
+            if component.name == correction.component_name:
+                _update_component_env(component, correction.key, correction.corrected_value)
+                break
+
+    # Apply env_updates from connections (same as before).
     for connection in connections:
         updates = list(getattr(connection, "env_updates", []) or [])
         if not updates:
@@ -246,6 +256,21 @@ async def run_deployment_planner(
                     for env in updates:
                         _update_component_env(component, env.key, env.value)
                     break
+
+    # Spring Boot env key normalization: convert dot-notation to UPPER_SNAKE_CASE.
+    # K8s env var names with dots are invalid in most shells. Spring Boot's relaxed
+    # binding maps SPRING_DATASOURCE_URL -> spring.datasource.url automatically.
+    # Only applied to springboot components.
+    def _to_upper_snake(key: str) -> str:
+        return key.replace(".", "_").replace("-", "_").upper()
+
+    for component in app_components:
+        if getattr(component, "project_type", "") == "springboot" and component.env_variables:
+            for env in component.env_variables:
+                converted = _to_upper_snake(env.key)
+                if converted != env.key:
+                    logger.info(f"[{project_id}] 🔄 Env key: {env.key} -> {converted}")
+                    env.key = converted
 
     logger.info(f"[{project_id}] ✅ Planning complete.")
     ingress = None
