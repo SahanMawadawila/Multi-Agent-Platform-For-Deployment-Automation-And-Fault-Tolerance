@@ -3,6 +3,7 @@
 #===============================================================================
 
 resource "helm_release" "kube_prometheus_stack" {
+  count            = var.enable_monitoring ? 1 : 0
   name             = "prometheus"
   namespace        = "monitoring"
   create_namespace = true

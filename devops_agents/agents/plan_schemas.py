@@ -138,16 +138,18 @@ class CredentialField(BaseModel):
         return _coerce_bool(v) if v is not None else True
 
 class ResourceSpec(BaseModel):
-    """Resource limits for a Kubernetes deployment."""
+    """Resource requests/limits for a Kubernetes deployment."""
+    cpu_request: str = Field("200m", description="CPU request (e.g., '100m', '200m', '500m')")
+    memory_request: str = Field("512Mi", description="Memory request (e.g., '256Mi', '512Mi', '1Gi')")
     cpu_limit: str = Field("500m", description="CPU limit (e.g., '200m', '500m', '1')")
     memory_limit: str = Field("512Mi", description="Memory limit (e.g., '256Mi', '512Mi', '1Gi')")
     replicas: int = Field(1, description="Number of pod replicas")
 
-    @field_validator('cpu_limit', 'memory_limit', mode='before')
+    @field_validator('cpu_request', 'memory_request', 'cpu_limit', 'memory_limit', mode='before')
     @classmethod
     def coerce_str(cls, v):
         if v is None:
-            return "500m"  # safe default
+            return "200m"  # safe default
         return str(v)
 
     @field_validator('replicas', mode='before')

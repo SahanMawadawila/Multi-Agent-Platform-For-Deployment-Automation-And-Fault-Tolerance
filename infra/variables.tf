@@ -53,3 +53,9 @@ variable "acm_certificate_arn" {
   description = "ACM Certificate ARN from the persistent stack (run: cd infra/persistent && terraform output acm_certificate_arn)"
   type        = string
 }
+
+variable "enable_monitoring" {
+  description = "Deploy logging (Loki) and monitoring (Prometheus/Grafana) stacks. Set to false to save cluster resources."
+  type        = bool
+  default     = false
+}

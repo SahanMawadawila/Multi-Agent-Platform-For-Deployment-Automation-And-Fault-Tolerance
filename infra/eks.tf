@@ -62,11 +62,12 @@ module "eks" {
       name = "${var.cluster_name}-main"
 
       ami_type       = "AL2023_x86_64_STANDARD"
-      instance_types = ["t3a.medium"]
+      instance_types = ["t3a.xlarge"]
+      capacity_type  = "SPOT"
 
-      min_size     = 2
-      max_size     = 4
-      desired_size = 2
+      min_size     = 1
+      max_size     = 2
+      desired_size = 1
 
       # Labels for workload scheduling
       labels = {

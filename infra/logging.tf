@@ -3,6 +3,7 @@
 #===============================================================================
 
 resource "helm_release" "loki_stack" {
+  count            = var.enable_monitoring ? 1 : 0
   namespace        = "logging"
   name             = "loki"
   repository       = "https://grafana.github.io/helm-charts"

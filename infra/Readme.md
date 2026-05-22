@@ -83,3 +83,9 @@ Deletes all temporary project files in `devops_agents/temp`.
 
 Drops `public` schema and re-runs Alembic migrations.
 **WARNING**: Deletes all data in the configured database!
+
+
+# Enable monitoring and logging (default is disabled)
+```powershell
+terraform apply -var="enable_monitoring=true"
+```

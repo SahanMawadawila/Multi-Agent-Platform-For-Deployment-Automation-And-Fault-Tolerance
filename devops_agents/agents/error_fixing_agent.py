@@ -8,6 +8,41 @@ from app.kafka_terminal_producer import send_terminal_message
 from config.settings import settings
 from typing import Annotated, List
 import os
+import re
+import subprocess
+import logging
+
+logger = logging.getLogger("error_fixing_agent")
+
+# Patterns that indicate a transient/infrastructure error (not a code issue).
+# When matched, we skip the LLM fix loop and just retry the build.
+TRANSIENT_ERROR_PATTERNS = [
+    r"unable to get dependency",
+    r"unable to invoke layer creator",
+    r"Downloading from https?://.*\.(tar\.gz|zip)",
+    r"Could not transfer artifact",
+    r"Failed to connect to",
+    r"Connection timed out",
+    r"Connection reset",
+    r"502 Bad Gateway",
+    r"503 Service Unavailable",
+    r"rate limit",
+    r"ETIMEDOUT",
+    r"ECONNRESET",
+    r"socket hang up",
+    r"no space left on device",
+    r"runner.*terminated",
+    r"The runner has received a shutdown signal",
+]
+
+def is_transient_error(error_logs: str) -> bool:
+    """Check if the build error is a transient infrastructure issue, not a code bug."""
+    if not error_logs:
+        return False
+    for pattern in TRANSIENT_ERROR_PATTERNS:
+        if re.search(pattern, error_logs, re.IGNORECASE):
+            return True
+    return False
 
 # ============== TOOLS ==============
 @tool
@@ -108,6 +143,26 @@ async def error_fixing_agent(state):
     component = state.get("component") or {}
     component_name = component.get("name")
     
+    # Check for transient errors — skip LLM entirely and just retry
+    if not error_fixing_messages and is_transient_error(error_logs):
+        send_terminal_message(
+            project_id,
+            "🔄 Transient build error detected (network/runner issue). Retrying without code changes...\n\r",
+            component_name,
+        )
+        logger.info(f"[{project_id}] Transient error detected, skipping LLM fix loop")
+        # Return a FixComplete-like signal so the graph routes to finalize_fix → rebuild
+        from langchain_core.messages import AIMessage
+        fake_fix = AIMessage(
+            content="",
+            tool_calls=[{
+                "id": "transient_skip",
+                "name": "FixComplete",
+                "args": {"summary": "Transient infrastructure error (network/runner). Retrying build."},
+            }],
+        )
+        return {"error_fixing_messages": [fake_fix]}
+    
     llm = ChatOpenAI(model="o4-mini", api_key=settings.openai_key)
     llm_with_tools = llm.bind_tools(tools)
     
@@ -132,6 +187,24 @@ async def error_fixing_agent(state):
         llm_messages = [SystemMessage(content=ERROR_FIXING_PROMPT)] + error_fixing_messages
         
         if is_new_failure:
+            # Check if this new failure is also transient
+            if is_transient_error(error_logs):
+                send_terminal_message(
+                    project_id,
+                    "🔄 Transient build error detected again. Retrying...\n\r",
+                    component_name,
+                )
+                from langchain_core.messages import AIMessage
+                fake_fix = AIMessage(
+                    content="",
+                    tool_calls=[{
+                        "id": "transient_skip",
+                        "name": "FixComplete",
+                        "args": {"summary": "Transient infrastructure error. Retrying build."},
+                    }],
+                )
+                return {"error_fixing_messages": [fake_fix]}
+            
             send_terminal_message(project_id, "⚠️ Previous fix failed. Analyzing new error...\n\r", component_name)
             new_human = HumanMessage(content=f"Your previous fix was applied, but the build failed AGAIN with this NEW error:\n\n{error_logs}\n\nPlease rethink your approach and fix this new issue.")
             llm_messages.append(new_human)
@@ -168,13 +241,39 @@ def check_fix_complete(state):
     return "error_fixing_agent"
 
 def finalize_fix(state):
-    """Mark fix as complete and transition to rebuild."""
+    """Mark fix as complete and transition to rebuild.
+    
+    Safety net: force-push any uncommitted changes the LLM may have
+    written via write_file but forgot to commit_and_push.
+    """
     project_id = state.get("project_id", "")
     retry_count = state.get("retry_count", 0)
     error_fixing_messages = state.get("error_fixing_messages", [])
+    local_path = state.get("local_path", "")
     
     component = state.get("component") or {}
     component_name = component.get("name")
+    
+    # Force-push any uncommitted changes as a safety net.
+    # The LLM sometimes writes files but forgets to call commit_and_push.
+    if local_path:
+        try:
+            # Check if there are uncommitted changes
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=local_path, capture_output=True, text=True
+            )
+            if status.stdout.strip():
+                logger.info(f"[{project_id}] Force-pushing uncommitted changes from error fixer")
+                send_terminal_message(project_id, "📤 Pushing uncommitted fixes...\n\r", component_name)
+                subprocess.run(["git", "add", "."], cwd=local_path, check=True, capture_output=True)
+                subprocess.run(
+                    ["git", "commit", "-m", "fix: auto-push uncommitted error fixes"],
+                    cwd=local_path, check=True, capture_output=True
+                )
+                subprocess.run(["git", "push"], cwd=local_path, check=True, capture_output=True)
+        except Exception as e:
+            logger.warning(f"[{project_id}] Force-push failed (may be clean): {e}")
     
     send_terminal_message(project_id, f"✅ Fix applied. Verifying with build (Attempt {retry_count + 1})...\n\r", component_name)
     
