@@ -30,7 +30,9 @@ async def infra_deployment_agent(state: dict):
     system_prompt = (
         "You are a Kubernetes expert. Generate only valid Kubernetes YAML. "
         "Output MUST be plain YAML, no markdown or explanations. "
-        "Use the provided infra component fields as the only source of truth. "
+        "Create infrastructure manifests that are fully deployable on Kubernetes using the provided details. "
+        "You MUST add any extra configuration, environment variables, initialization scripts, ConfigMaps, or PersistentVolumeClaims needed to ensure the component deploys successfully and avoids deployment failures (CrashLoopBackOff). "
+        "Use the provided infra component fields as your baseline source of truth. "
         "Namespace MUST be exactly the provided namespace value."
     )
 

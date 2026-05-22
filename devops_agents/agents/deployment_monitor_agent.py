@@ -1,147 +1,139 @@
 import asyncio
-import requests
+import json
+import time
 from config.settings import settings
 from app.kafka_terminal_producer import send_terminal_message
 
-
 async def deployment_monitor_agent(state):
-    """
-    Post-processing graph node: monitors ALL component deployments.
-    Waits for ArgoCD sync + rollout, performs liveness probe.
-    Works for both single and multi-project.
-    """
     project_id = state.get("project_id", "")
-    components = state.get("components", [])
     
-    send_terminal_message(project_id, "🔭 Starting Deployment Monitor...\n\r")
+    send_terminal_message(project_id, "🔭 Starting Deployment Monitor (2-minute fast scan)...\n\r")
     
     namespace = project_id
     host = f"app-{project_id}.{settings.domain_name}"
     access_url = f"https://{host}"
     
-    all_healthy = True
-    aggregated_error_logs = ""
+    send_terminal_message(project_id, "⏳ Waiting for ArgoCD to sync and create pods...\n\r")
+    await asyncio.sleep(15) 
     
-    for comp in components:
-        app_name = comp.get("name") or "app"
-        comp_name = comp.get("name", "")
-        health_path = comp.get("health_check_path", "/")
-        
-        send_terminal_message(project_id, f"⏳ Waiting for {app_name} rollout...\n\r", comp_name)
-        
-        # 1. Wait for deployment resource to exist (ArgoCD sync time)
-        for _ in range(30):
-            check_proc = await asyncio.create_subprocess_exec(
-                "kubectl", "get", "deployment", app_name, "-n", namespace,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL
-            )
-            await check_proc.communicate()
-            if check_proc.returncode == 0:
-                break
-            await asyncio.sleep(5)
-        
-        # 2. Watch rollout status
-        process = await asyncio.create_subprocess_exec(
-            "kubectl", "rollout", "status", f"deployment/{app_name}",
-            "-n", namespace, "--timeout=300s",
+    timeout = 120 # Reduced to 2 minutes
+    start_time = time.time()
+    
+    # THE IGNORE ARRAY: Track pods that successfully spin up so we stop checking them
+    healthy_pods = set()
+    all_pods_ready = False
+    
+    while time.time() - start_time < timeout:
+        proc = await asyncio.create_subprocess_exec(
+            "kubectl", "get", "pods", "-n", namespace, "-o", "json",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await process.communicate()
+        stdout, _ = await proc.communicate()
         
-        if process.returncode != 0:
-            send_terminal_message(project_id, f"❌ {app_name} rollout failed: {stderr.decode()}\n\r", comp_name)
-            
-            # Fetch logs for debugging by finding the exact pod (avoiding label overlap with infra like postgresql)
-            pod_name_proc = await asyncio.create_subprocess_shell(
-                f"kubectl get pods -n {namespace} --no-headers | grep '^{app_name}-[0-9a-f]' | head -n 1 | awk '{{print $1}}'",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            pod_name_out, _ = await pod_name_proc.communicate()
-            exact_pod_name = pod_name_out.decode().strip()
-            
-            if exact_pod_name:
-                logs_proc = await asyncio.create_subprocess_exec(
-                    "kubectl", "logs", exact_pod_name, "-n", namespace, "--tail=100",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-            else:
-                logs_proc = await asyncio.create_subprocess_exec(
-                    "kubectl", "logs", f"deployment/{app_name}", "-n", namespace, "--tail=100",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-            
-            logs_out, _ = await logs_proc.communicate()
-            send_terminal_message(project_id, f"📋 Logs ({exact_pod_name or 'deployment'}): {logs_out.decode()[:500]}\n\r", comp_name)
-            
-            error_log = f"=== App: {app_name} ===\nRollout Error: {stderr.decode()}\nPod Logs:\n{logs_out.decode()[:2000]}\n\n"
-            aggregated_error_logs += error_log
-            
-            all_healthy = False
+        if proc.returncode != 0:
+            await asyncio.sleep(10)
             continue
-        
-        send_terminal_message(project_id, f"✅ {app_name} pods are running!\n\r", comp_name)
-        
-        # 3. Liveness check
-        health_url = f"{access_url}{health_path}"
-        send_terminal_message(project_id, f"💓 Checking liveness: {health_url}\n\r", comp_name)
-        
-        is_healthy = False
-        for _ in range(24):  # Retry for 2 minutes
-            try:
-                resp = await asyncio.to_thread(requests.get, health_url, timeout=10, verify=True)
-                if resp.status_code == 200:
-                    is_healthy = True
-                    break
-            except Exception:
-                pass
-            await asyncio.sleep(5)
-        
-        if is_healthy:
-            send_terminal_message(project_id, f"🎉 {app_name} is live!\n\r", comp_name)
-        else:
-            send_terminal_message(project_id, f"⚠️ {app_name} deployed but health check failed.\n\r", comp_name)
             
-            pod_name_proc = await asyncio.create_subprocess_shell(
-                f"kubectl get pods -n {namespace} --no-headers | grep '^{app_name}-[0-9a-f]' | head -n 1 | awk '{{print $1}}'",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            pod_name_out, _ = await pod_name_proc.communicate()
-            exact_pod_name = pod_name_out.decode().strip()
+        try:
+            items = json.loads(stdout.decode()).get("items", [])
+        except Exception:
+            items = []
             
-            if exact_pod_name:
-                logs_proc = await asyncio.create_subprocess_exec(
-                    "kubectl", "logs", exact_pod_name, "-n", namespace, "--tail=100",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-            else:
-                logs_proc = await asyncio.create_subprocess_exec(
-                    "kubectl", "logs", f"deployment/{app_name}", "-n", namespace, "--tail=100",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
+        if not items:
+            send_terminal_message(project_id, "⏳ No pods found yet. Waiting...\n\r")
+            await asyncio.sleep(10)
+            continue
+            
+        all_pods_ready = True
+        
+        for pod in items:
+            pod_name = pod["metadata"]["name"]
+            
+            # OPTIMIZATION: If we already confirmed this pod is healthy in a previous loop, skip it
+            if pod_name in healthy_pods:
+                continue
                 
-            logs_out, _ = await logs_proc.communicate()
+            phase = pod.get("status", {}).get("phase", "Unknown")
+            container_statuses = pod.get("status", {}).get("containerStatuses", [])
             
-            error_log = f"=== App: {app_name} ===\nHealth Check Failed for {health_url}.\nPod Logs ({exact_pod_name or 'deployment'}):\n{logs_out.decode()[:2000]}\n\n"
-            aggregated_error_logs += error_log
-            all_healthy = False
+            # Simplified readiness check
+            is_ready = False
+            if phase == "Succeeded":
+                is_ready = True
+            elif phase == "Running" and container_statuses:
+                is_ready = all(c.get("ready", False) for c in container_statuses)
+            
+            if is_ready:
+                # Add to ignore array and never check this specific pod again
+                healthy_pods.add(pod_name)
+                send_terminal_message(project_id, f"✅ Pod Ready: {pod_name}\n\r")
+            else:
+                # If even one pod is not ready, we cannot break the loop yet
+                all_pods_ready = False
+                
+        # If every single pod in the namespace is now healthy, break the loop immediately
+        if all_pods_ready:
+            break
+            
+        await asyncio.sleep(10)
+        
+    # 2. Collect errors for ONLY the pods that failed
+    aggregated_error_logs = ""
     
-    # Final result
-    if all_healthy:
-        send_terminal_message(project_id, f"🎉 All deployments verified! Access: {access_url}\n\r")
+    if not all_pods_ready:
+        send_terminal_message(project_id, "❌ Timeout reached. Gathering error logs for failed pods...\n\r")
+        
+        # Fetch the absolute final state of the pods
+        proc = await asyncio.create_subprocess_exec(
+            "kubectl", "get", "pods", "-n", namespace, "-o", "json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await proc.communicate()
+        
+        try:
+            items = json.loads(stdout.decode()).get("items", [])
+        except Exception:
+            items = []
+            
+        if not items:
+            aggregated_error_logs += "Error: No pods were created in the namespace.\n"
+        else:
+            for pod in items:
+                pod_name = pod["metadata"]["name"]
+                
+                # If a pod is NOT in our healthy_pods set, it's the one that failed
+                if pod_name not in healthy_pods:
+                    phase = pod.get("status", {}).get("phase", "Unknown")
+                    send_terminal_message(project_id, f"📋 Fetching logs for unhealthy pod: {pod_name}\n\r")
+                    
+                    # Grab application logs
+                    logs_proc = await asyncio.create_subprocess_exec(
+                        "kubectl", "logs", pod_name, "-n", namespace, "--tail=100", "--all-containers",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    logs_out, logs_err = await logs_proc.communicate()
+                    
+                    # Grab Kubernetes events
+                    events_proc = await asyncio.create_subprocess_exec(
+                        "kubectl", "get", "events", "-n", namespace, "--field-selector", f"involvedObject.name={pod_name}",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    events_out, _ = await events_proc.communicate()
+                    
+                    aggregated_error_logs += f"=== Pod: {pod_name} ===\nPhase: {phase}\nEvents:\n{events_out.decode()}\nLogs:\n{logs_out.decode()[:2000]}\n{logs_err.decode()}\n\n"
+                    
+    # 3. Final Return
+    if all_pods_ready:
+        send_terminal_message(project_id, f"🎉 All deployments verified globally! Access: {access_url}\n\r")
         return {
             "deployment_status": "success",
             "access_url": access_url,
         }
     else:
-        send_terminal_message(project_id, "⚠️ Some deployments had issues.\n\r")
         return {
             "deployment_status": "failed",
             "access_url": access_url,

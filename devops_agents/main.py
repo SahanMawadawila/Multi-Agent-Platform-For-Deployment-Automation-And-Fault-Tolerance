@@ -121,12 +121,23 @@ async def process_job(job):
     #slice out application results
     results = all_results[len(infra_tasks):]
 
+    failed_components = []
     for comp, result in zip(comp_specs, results):
         if result.get("build_status") == "failed":
-            send_build_event(project_id, build_id, "failed", details={
-                "error": result.get("build_error_logs", "Build failed"),
-                "duration": int(time.time() - start_time),
-            })
+            failed_components.append(comp.get("name", "unknown"))
+
+    if failed_components:
+        failed_names = ", ".join(failed_components)
+        send_terminal_message(
+            project_id,
+            f"❌ Build failed for: {failed_names} after all retries exhausted. Aborting deployment — will NOT proceed to GitOps.\n\r",
+        )
+        send_build_event(project_id, build_id, "failed", details={
+            "error": f"Build failed for components: {failed_names}",
+            "failed_components": failed_components,
+            "duration": int(time.time() - start_time),
+        })
+        return
     
     # ==========================================
     # POST-PROCESSING GRAPH (runs once for both)
@@ -137,7 +148,7 @@ async def process_job(job):
         "project_id": project_id,
         "build_id": build_id,
         "start_time": start_time,
-        "components": app_components,
+        "components": app_components + infra_components,
         "ingress_config": deployment_plan.get("ingress"),
         "gitops_dir": gitops_dir,
     }
