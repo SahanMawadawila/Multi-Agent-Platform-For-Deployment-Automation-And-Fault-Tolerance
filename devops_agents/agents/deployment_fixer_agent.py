@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from tools.git_tools import AsyncGitTools
 from app.kafka_terminal_producer import send_terminal_message
 from config.settings import settings
-from typing import Annotated
+from typing import Annotated, List, Optional
 import os
 import subprocess
 
@@ -75,12 +75,36 @@ async def commit_and_push(
     except subprocess.CalledProcessError as e:
         return f"Error pushing changes: {e.stderr.decode() if e.stderr else str(e)}"
 
+@tool
+async def execute_k8s_command(
+    command: str,
+    state: Annotated[dict, InjectedState]
+) -> str:
+    """Executes a kubectl command to get pod details or logs from the Kubernetes cluster.
+    Only read-only commands like 'kubectl get pods', 'kubectl describe pod <pod_name>', or 'kubectl logs <pod_name>' are permitted."""
+    project_id = state.get("project_id", "")
+    send_terminal_message(project_id, f"🔍 Executing k8s command: {command}\n\r")
+    
+    if not command.strip().startswith("kubectl"):
+        return "Error: Only 'kubectl' commands are allowed."
+        
+    forbidden_words = ["delete", "apply", "create", "edit", "scale", "exec", "replace", "patch"]
+    if any(word in command.split() for word in forbidden_words):
+        return "Error: Only read-only commands (get, describe, logs) are allowed."
+        
+    try:
+        result = subprocess.run(command.split(), check=True, capture_output=True, text=True)
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        return f"Error executing command: {e.stderr}"
+
 class DeploymentFixComplete(BaseModel):
     """Signal that the agent has finished investigating and applying fixes."""
     is_app_issue: bool = Field(..., description="Set to True if this is an application code issue that cannot be fixed in GitOps. False if it was a GitOps config issue that you fixed.")
-    summary: str = Field(..., description="Summary of what the issue was and what you did.")
+    error: str = Field(..., description="Reason for the error")
+    fix_applied: Optional[str] = Field(None, description="Description of the fix applied (optional if it's an app issue)")
 
-tools = [read_file_structure, read_file, write_file, commit_and_push, DeploymentFixComplete]
+tools = [read_file_structure, read_file, write_file, commit_and_push, execute_k8s_command, DeploymentFixComplete]
 
 # ============== AGENTS ==============
 
@@ -91,10 +115,10 @@ Follow this Chain of Thought process:
 1. IDENTIFY: Read the provided deployment error logs. Determine if this is an Application Code Issue or a GitOps Issue.
    - Application Code Issue: The application panics, throws unhandled exceptions, lacks required environment variables that must be added to the code, or has logic errors. YOU CANNOT FIX THIS.
    - GitOps Issue: The container is CrashLoopBackOff due to a missing ConfigMap, bad environment variable value in the manifest, wrong image tag, missing secret, or malformed YAML. YOU CAN FIX THIS.
-2. THINK: If it's a GitOps issue, use `read_file_structure` and `read_file` to find the incorrect manifests in the GitOps repo. Think step-by-step on how to fix them.
+2. THINK: Use `execute_k8s_command` to get pod details/logs if needed. If it's a GitOps issue, use `read_file_structure` and `read_file` to find the incorrect manifests in the GitOps repo. Think step-by-step on how to fix them.
 3. FIX: If it's a GitOps issue, use `write_file` to correct the manifests. If it's an Application Code issue, SKIP to COMPLETE.
 4. PUSH: If you made changes, use `commit_and_push` to apply the GitOps fixes.
-5. COMPLETE: Call `DeploymentFixComplete` with `is_app_issue` set appropriately and a summary.
+5. COMPLETE: Call `DeploymentFixComplete` with `is_app_issue` set appropriately, `error` (reason for error), and `fix_applied` (what you changed, optional if it's an app issue).
 """
 
 async def deployment_fixer_agent(state):
@@ -175,12 +199,13 @@ def finalize_deployment_fix(state):
             for tc in last_msg.tool_calls:
                 if tc["name"] == "DeploymentFixComplete":
                     is_app_issue = tc["args"].get("is_app_issue", False)
-                    summary = tc["args"].get("summary", "")
+                    error = tc["args"].get("error", "Unknown error")
+                    fix_applied = tc["args"].get("fix_applied", "No fix applied")
                     
                     if is_app_issue:
-                        send_terminal_message(project_id, f"❌ Unfixable Application Code Issue Detected: {summary}\n\r")
+                        send_terminal_message(project_id, f"❌ Unfixable Application Code Issue Detected. Error: {error}\n\r")
                     else:
-                        send_terminal_message(project_id, f"✅ GitOps Fix applied: {summary}. Retrying deployment...\n\r")
+                        send_terminal_message(project_id, f"✅ GitOps Fix applied. Error was: {error}. Fix: {fix_applied}. Retrying deployment...\n\r")
                         
                 new_messages.append(ToolMessage(
                     tool_call_id=tc["id"],

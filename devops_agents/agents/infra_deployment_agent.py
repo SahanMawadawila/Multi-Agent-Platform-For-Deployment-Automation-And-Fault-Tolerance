@@ -22,7 +22,7 @@ async def infra_deployment_agent(state: dict):
     os.makedirs(manifests_path, exist_ok=True)
 
     llm = ChatOpenAI(
-        model="gpt-5-mini",
+        model="gpt-5.4-mini",
         api_key=settings.openai_key,
         temperature=0,
     )
@@ -31,10 +31,34 @@ async def infra_deployment_agent(state: dict):
         "You are a Kubernetes expert. Generate only valid Kubernetes YAML. "
         "Output MUST be plain YAML, no markdown or explanations. "
         "Create infrastructure manifests that are fully deployable on Kubernetes using the provided details. "
-        "You MUST add any extra configuration, environment variables, initialization scripts, ConfigMaps, or PersistentVolumeClaims needed to ensure the component deploys successfully and avoids deployment failures (CrashLoopBackOff). "
         "Use the provided infra component fields as your baseline source of truth. "
-        "Namespace MUST be exactly the provided namespace value."
+        "Namespace MUST be exactly the provided namespace value. "
+        "CRITICAL RULES FOR DATABASES AND INFRASTRUCTURE: "
+        "1. NEVER use emptyDir for data volumes. MUST use a PersistentVolumeClaim requesting at least 1Gi of storage with `storageClassName: gp2`. "
+        "2. DO NOT create any helper, placeholder, mounter, or volume-attacher pods. Only generate the actual StatefulSet/Deployment, Service, PVC, and Secret. "
+        "3. For StatefulSets, ensure the YAML is fully valid. Do NOT include read-only fields like `templateGeneration` and do NOT include empty `volumeClaimTemplates: []`."
     )
+    
+    # Load specific infra fixes dynamically
+    try:
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "error_fixus.json")
+        with open(config_path, "r") as f:
+            error_fixus = json.load(f)
+            
+        component_name = (service_name or "").lower()
+        image_name = (component.get("image") or "").lower()
+        
+        specific_rules = []
+        for key, rule in error_fixus.items():
+            if key.lower() in component_name or key.lower() in image_name:
+                specific_rules.append(rule)
+                
+        if specific_rules:
+            system_prompt += "\n\nCOMPONENT SPECIFIC CRITICAL RULES:\n"
+            for idx, rule in enumerate(specific_rules, 1):
+                system_prompt += f"{idx}. {rule}\n"
+    except Exception as e:
+        send_terminal_message(project_id, f"⚠️ Warning: Could not load error_fixus.json: {e}\n\r")
 
     user_payload = {
         "project_id": project_id,

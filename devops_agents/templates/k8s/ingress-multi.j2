@@ -23,5 +23,5 @@ spec:
               service:
                 name: {{ comp.service_name }}
                 port:
-                  number: 80
+                  number: {{ comp.port }}
         {% endfor %}

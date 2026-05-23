@@ -1,0 +1,5 @@
+{
+  "postgres": "For PostgreSQL, you MUST set the environment variable PGDATA to a subdirectory (e.g., /var/lib/postgresql/data/pgdata) to avoid lost+found initialization errors.",
+  "kafka": "For Kafka deployments (e.g., confluentinc/cp-kafka), you MUST set `enableServiceLinks: false` in the Pod spec to prevent Kubernetes from injecting KAFKA_PORT variables which crash the startup script. Additionally, you MUST set memory requests and limits to at least 1Gi, and set CPU requests to at least 500m. Expose the internal port 29092. Set `KAFKA_LISTENERS` to `PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092`. Use `tcpSocket` for readiness and liveness probes instead of exec `kafka-topics`. Finally, use the `Recreate` deployment strategy to prevent NodeExistsException on restarts.",
+  "zookeeper": "For Zookeeper deployments, you MUST use a securityContext with `fsGroup: 1000` so that it has write permissions to its mounted data directory."
+}

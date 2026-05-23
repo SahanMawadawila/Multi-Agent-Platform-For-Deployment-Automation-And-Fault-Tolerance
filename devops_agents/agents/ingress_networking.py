@@ -42,9 +42,16 @@ def generate_ingress(state):
         template_components = []
         for rule in ingress_config.get("rules", []):
             target_service = service_map.get(rule.get("service")) or rule.get("service")
+            port = 80
+            for comp in components:
+                if comp.get("name") == rule.get("service"):
+                    port = comp.get("container_port", 80)
+                    break
+            
             template_components.append({
                 "path_prefix": rule.get("path", "/"),
                 "service_name": target_service,
+                "port": port,
             })
 
         template = env.get_template("ingress-multi.j2")
@@ -72,6 +79,7 @@ def generate_ingress(state):
             template_components.append({
                 "path_prefix": ingress.get("path_prefix", "/"),
                 "service_name": comp.get("name"),
+                "port": comp.get("container_port", 80),
             })
             send_terminal_message(
                 project_id,
@@ -100,6 +108,7 @@ def generate_ingress(state):
             host=host,
             domain_name=settings.domain_name,
             acm_certificate_arn=settings.acm_certificate_arn,
+            port=comp.get("container_port", 80),
         )
     
     ingress_path = os.path.join(app_dir, "ingress.yaml")
