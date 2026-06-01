@@ -45,7 +45,7 @@ def generate_ingress(state):
             port = 80
             for comp in components:
                 if comp.get("name") == rule.get("service"):
-                    port = comp.get("container_port", 80)
+                    port = comp.get("port", 80)
                     break
             
             template_components.append({
@@ -79,7 +79,7 @@ def generate_ingress(state):
             template_components.append({
                 "path_prefix": ingress.get("path_prefix", "/"),
                 "service_name": comp.get("name"),
-                "port": comp.get("container_port", 80),
+                "port": comp.get("port", 80),
             })
             send_terminal_message(
                 project_id,
@@ -108,7 +108,7 @@ def generate_ingress(state):
             host=host,
             domain_name=settings.domain_name,
             acm_certificate_arn=settings.acm_certificate_arn,
-            port=comp.get("container_port", 80),
+            port=comp.get("port", 80),
         )
     
     ingress_path = os.path.join(app_dir, "ingress.yaml")
