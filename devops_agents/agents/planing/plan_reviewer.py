@@ -47,7 +47,7 @@ Scan ALL env variables across ALL components. For each problem, add an EnvCorrec
 
 ━━━ CHAIN OF THOUGHT ━━━
 Before producing output, reason step-by-step through these checks:
-1. For each app component, list its env variables that reference other services.
+1. For EVERY component (both app and infra), list its env variables that reference other services or contain localhost.
 2. For each such variable, identify which component it connects to.
 3. Verify: Does the URL/host use the K8s service name (component name)? Is the port correct?
 4. Verify: Are credentials from infra components propagated correctly?
