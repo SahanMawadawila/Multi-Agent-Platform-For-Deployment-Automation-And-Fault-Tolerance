@@ -181,6 +181,11 @@ jobs:
       - name: Setup pack CLI
         uses: buildpacks/github-actions/setup-pack@v5.0.0
 
+      - name: Prepare environment (Fix for NGINX logs)
+        run: |
+          mkdir -p {buildpack_path}/logs
+          touch {buildpack_path}/logs/.keep
+
       - name: Build and push image using Cloud Native Buildpacks
         id: build-image
         env:
