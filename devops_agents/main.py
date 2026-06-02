@@ -151,6 +151,12 @@ async def process_job(job):
         "components": app_components + infra_components,
         "ingress_config": deployment_plan.get("ingress"),
         "gitops_dir": gitops_dir,
+        "component_mirror_paths": {
+            comp.get("name"): os.path.abspath(f"temp/{name}-{comp.get('name')}")
+            for comp in app_components
+        },
+        "repo_owner": owner,
+        "repo_name": name,
     }
     
     await post_processing_graph.ainvoke(post_state, config=config)

@@ -44,3 +44,10 @@ class PostProcessingState(TypedDict):
     retry_count: int
     deployment_fixing_messages: Annotated[List, add_messages]
     is_app_issue: Optional[bool]
+    # Map of component_name -> local mirror path for app source code access
+    component_mirror_paths: Optional[Dict[str, str]]
+    # Store the classified errors for sequential processing
+    classified_errors: Optional[Dict]
+    # Track the repo owner/name for build monitoring
+    repo_owner: Optional[str]
+    repo_name: Optional[str]
