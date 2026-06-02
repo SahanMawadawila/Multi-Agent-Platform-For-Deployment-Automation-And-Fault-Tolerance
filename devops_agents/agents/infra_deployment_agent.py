@@ -36,7 +36,8 @@ async def infra_deployment_agent(state: dict):
         "CRITICAL RULES FOR DATABASES AND INFRASTRUCTURE: "
         "1. NEVER use emptyDir for data volumes. MUST use a PersistentVolumeClaim requesting at least 1Gi of storage with `storageClassName: gp2`. "
         "2. DO NOT create any helper, placeholder, mounter, or volume-attacher pods. Only generate the actual StatefulSet/Deployment, Service, PVC, and Secret. "
-        "3. For StatefulSets, ensure the YAML is fully valid. Do NOT include read-only fields like `templateGeneration` and do NOT include empty `volumeClaimTemplates: []`."
+        "3. For StatefulSets, ensure the YAML is fully valid. Do NOT include read-only fields like `templateGeneration` and do NOT include empty `volumeClaimTemplates: []`. "
+        "4. For liveness and readiness probes, ALWAYS give components plenty of time to start up by adding a startupProbe or setting initialDelaySeconds to at least 90."
     )
     
     # Load specific infra fixes dynamically
