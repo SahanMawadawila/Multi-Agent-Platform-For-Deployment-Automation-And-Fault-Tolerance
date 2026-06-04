@@ -40,7 +40,7 @@ class PostProcessingState(TypedDict):
     gitops_commit_id: Optional[str]
     access_url: Optional[str]
     deployment_status: Optional[str]
-    deployment_error_logs: Optional[str]
+    deployment_error_logs: Optional[List]  # List of structured pod error dicts
     retry_count: int
     deployment_fixing_messages: Annotated[List, add_messages]
     is_app_issue: Optional[bool]

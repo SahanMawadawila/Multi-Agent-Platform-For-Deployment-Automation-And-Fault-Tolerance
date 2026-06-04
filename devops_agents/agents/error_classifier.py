@@ -17,6 +17,17 @@ from app.kafka_terminal_producer import send_terminal_message
 logger = logging.getLogger("error_classifier")
 
 
+# ============== STRUCTURED ERROR LOG (from deployment_monitor_agent) ==============
+
+class PodErrorRecord(BaseModel):
+    """Structured error record for a single failing pod."""
+    pod_name: str = Field(..., description="Kubernetes pod name")
+    component_name: str = Field("", description="Logical component name extracted from the pod name (e.g., 'frontend', 'account-service')")
+    phase: str = Field("Unknown", description="Pod phase (e.g., 'Running', 'CrashLoopBackOff', 'Error')")
+    events: str = Field("", description="Kubernetes events for this pod")
+    logs: str = Field("", description="Container logs (last 100 lines)")
+
+
 # ============== PYDANTIC SCHEMAS ==============
 
 class ComponentError(BaseModel):
@@ -33,6 +44,15 @@ class ComponentError(BaseModel):
         )
     )
     error_summary: str = Field(..., description="A concise summary of the root cause of this component's failure")
+    needs_fix: bool = Field(
+        True,
+        description=(
+            "Whether this component actually needs a fix applied. "
+            "Set to False if the component is only failing because another dependency (e.g., RabbitMQ, a database) "
+            "is not yet ready — if the other component will start up correctly, you don't need to fix this component here as it will self-recover. "
+            "Set to True ONLY if the component has a genuine bug or misconfiguration that requires intervention."
+        )
+    )
 
 
 class DeploymentErrorClassification(BaseModel):
@@ -40,15 +60,12 @@ class DeploymentErrorClassification(BaseModel):
     component_errors: List[ComponentError] = Field(
         ..., description="List of classified errors, one per failing component"
     )
-    fix_order_summary: str = Field(
-        ..., description="Brief explanation of why you classified each error the way you did"
-    )
 
 
 # ============== CLASSIFIER PROMPT ==============
 
 CLASSIFIER_PROMPT = """You are an expert Kubernetes deployment error analyst. 
-You will receive error logs from a failed Kubernetes deployment. Multiple pods/components may be failing.
+You will receive structured error logs from a failed Kubernetes deployment. Each entry contains a pod name, component name, phase, events, and container logs.
 
 Your job is to classify EACH failing component's error into exactly one of these categories:
 
@@ -73,23 +90,25 @@ Your job is to classify EACH failing component's error into exactly one of these
 IMPORTANT RULES:
 - If a pod is in CrashLoopBackOff and the logs show an APPLICATION error (like missing files, bad config), classify as application_error.
 - If a pod is in CrashLoopBackOff and the logs show a PROBE failure (404 on /actuator/health, wrong port), classify as gitops_fix.
-- If multiple components are failing because a dependency (like RabbitMQ) is down, classify the ROOT CAUSE component, not the dependent services.
+- If multiple components are failing because a dependency (like RabbitMQ, a database) is down, classify the ROOT CAUSE component only as needing a fix. For the dependent services, if the other component will startup correctly, don't need fix here (set `needs_fix = False`) — they will self-recover.
 - Be precise: one classification per DISTINCT failing component.
 - Do NOT classify healthy/running pods.
+- Use `needs_fix = False` for components that are just waiting for their dependencies to come online (e.g., a Spring Boot service that fails because RabbitMQ isn't ready yet).
 """
 
 
 # ============== CLASSIFIER FUNCTION ==============
 
 async def classify_deployment_errors(
-    error_logs: str,
+    pod_errors: List[dict],
     project_id: str,
 ) -> DeploymentErrorClassification:
     """
     Classify deployment errors per component using LLM structured output.
     
     Args:
-        error_logs: Aggregated error logs from deployment_monitor_agent
+        pod_errors: List of structured error dicts from deployment_monitor_agent.
+                    Each dict has: pod_name, component_name, phase, events, logs
         project_id: Project identifier for terminal messages
         
     Returns:
@@ -98,22 +117,36 @@ async def classify_deployment_errors(
     send_terminal_message(project_id, "🔍 Classifying deployment errors per component...\n\r")
     
     llm = ChatOpenAI(
-        model="gpt-4.1-mini",
+        model="o4-mini",
         api_key=settings.openai_key,
-        temperature=0,
     )
     
     llm_structured = llm.with_structured_output(DeploymentErrorClassification)
     
+    # Format the structured pod errors for the LLM
+    formatted_errors = []
+    for pe in pod_errors:
+        formatted_errors.append(
+            f"=== Component: {pe.get('component_name', 'unknown')} | Pod: {pe.get('pod_name', 'unknown')} ===\n"
+            f"Phase: {pe.get('phase', 'Unknown')}\n"
+            f"Events:\n{pe.get('events', 'N/A')}\n"
+            f"Logs:\n{pe.get('logs', 'N/A')}"
+        )
+    
+    error_text = "\n\n".join(formatted_errors) if formatted_errors else "No structured error data available."
+    
     messages = [
         SystemMessage(content=CLASSIFIER_PROMPT),
-        HumanMessage(content=f"Here are the deployment error logs:\n\n{error_logs}"),
+        HumanMessage(content=f"Here are the structured deployment error logs:\n\n{error_text}"),
     ]
     
     try:
         classification = await llm_structured.ainvoke(messages)
         
         # Log the classification
+        fixable = [e for e in classification.component_errors if e.needs_fix]
+        skippable = [e for e in classification.component_errors if not e.needs_fix]
+        
         app_errors = [e for e in classification.component_errors if e.error_type == "application_error"]
         image_errors = [e for e in classification.component_errors if e.error_type == "image_creation_error"]
         gitops_errors = [e for e in classification.component_errors if e.error_type == "gitops_fix"]
@@ -134,6 +167,12 @@ async def classify_deployment_errors(
             f"📋 Error Classification: {', '.join(summary_parts) if summary_parts else 'No errors classified'}\n\r"
         )
         
+        if skippable:
+            send_terminal_message(
+                project_id,
+                f"⏭️ {len(skippable)} component(s) will self-recover (no fix needed)\n\r"
+            )
+        
         for ce in classification.component_errors:
             emoji = {
                 "application_error": "🐛",
@@ -141,12 +180,16 @@ async def classify_deployment_errors(
                 "gitops_fix": "📝",
                 "ingress_issue": "🌐",
             }.get(ce.error_type, "❓")
+            fix_label = "✅ needs fix" if ce.needs_fix else "⏭️ will self-recover"
             send_terminal_message(
                 project_id,
-                f"   {emoji} {ce.component_name}: {ce.error_type} — {ce.error_summary}\n\r"
+                f"   {emoji} {ce.component_name}: {ce.error_type} — {ce.error_summary} [{fix_label}]\n\r"
             )
         
-        logger.info(f"[{project_id}] Classified {len(classification.component_errors)} errors: {classification.fix_order_summary}")
+        logger.info(
+            f"[{project_id}] Classified {len(classification.component_errors)} errors "
+            f"({len(fixable)} need fix, {len(skippable)} will self-recover)"
+        )
         return classification
         
     except Exception as e:
@@ -160,7 +203,7 @@ async def classify_deployment_errors(
                     component_name="unknown",
                     error_type="gitops_fix",
                     error_summary=f"Classification failed: {str(e)}. Treating as GitOps issue.",
+                    needs_fix=True,
                 )
             ],
-            fix_order_summary="Fallback classification due to error",
         )

@@ -149,11 +149,11 @@ Follow this Chain of Thought process:
    - Creating missing files/directories (e.g., adding a `logs/.keep` file)
    - Fixing configuration files (e.g., nginx.conf, application.yml)
    - Adding missing dependencies to package.json, pom.xml, etc.
-   - Fixing build scripts or Dockerfiles
+   - Fixing build scripts (Note: Images are built using Cloud Native Buildpacks via GitHub Actions. Do NOT attempt to fix or create Dockerfiles).
 5. PUSH: Use `commit_and_push_app` to push your fix. This will trigger a CI/CD rebuild of the container image.
 6. COMPLETE: Call `AppFixComplete` to signal you are done.
 
-IMPORTANT: After you push, a new container image will be built automatically. Do NOT try to fix Kubernetes manifests — that is handled by a separate agent.
+IMPORTANT: After you push, a new container image will be built automatically using Cloud Native Buildpacks. Do NOT try to fix Kubernetes manifests — that is handled by a separate agent.
 """
 
 

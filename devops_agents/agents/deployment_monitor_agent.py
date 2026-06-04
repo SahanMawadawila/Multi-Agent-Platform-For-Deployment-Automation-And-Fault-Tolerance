@@ -1,8 +1,37 @@
 import asyncio
 import json
+import re
 import time
 from config.settings import settings
 from app.kafka_terminal_producer import send_terminal_message
+
+
+def _extract_component_name(pod_name: str) -> str:
+    """
+    Extract the logical component name from a Kubernetes pod name.
+    
+    Pod names follow patterns like:
+      - 'frontend-7c5cc979-j6sjm'          -> 'frontend'
+      - 'account-service-57b98d4dd-tzqfq'   -> 'account-service'
+      - 'account-service-postgres-0'         -> 'account-service-postgres'
+      - 'rabbitmq-0'                         -> 'rabbitmq'
+    
+    Strategy: strip the trailing ReplicaSet hash and pod hash (or StatefulSet ordinal).
+    """
+    # StatefulSet pattern: name-0, name-1, etc.
+    match = re.match(r"^(.+)-(\d+)$", pod_name)
+    if match:
+        return match.group(1)
+    
+    # Deployment pattern: name-<replicaset_hash>-<pod_hash>
+    # ReplicaSet hash is typically 8-10 alphanumeric chars, pod hash is 5 chars
+    match = re.match(r"^(.+)-[a-f0-9]{6,10}-[a-z0-9]{5}$", pod_name)
+    if match:
+        return match.group(1)
+    
+    # Fallback: just return as-is
+    return pod_name
+
 
 async def deployment_monitor_agent(state):
     project_id = state.get("project_id", "")
@@ -16,7 +45,7 @@ async def deployment_monitor_agent(state):
     send_terminal_message(project_id, "⏳ Waiting for ArgoCD to sync and create pods...\n\r")
     await asyncio.sleep(15) 
     
-    timeout = 120 # Reduced to 2 minutes
+    timeout = 240 # Reduced to 3 minutes
     start_time = time.time()
     
     # THE IGNORE ARRAY: Track pods that successfully spin up so we stop checking them
@@ -78,8 +107,8 @@ async def deployment_monitor_agent(state):
             
         await asyncio.sleep(10)
         
-    # 2. Collect errors for ONLY the pods that failed
-    aggregated_error_logs = ""
+    # 2. Collect STRUCTURED errors for ONLY the pods that failed
+    pod_error_list = []
     
     if not all_pods_ready:
         send_terminal_message(project_id, "❌ Timeout reached. Gathering error logs for failed pods...\n\r")
@@ -98,14 +127,26 @@ async def deployment_monitor_agent(state):
             items = []
             
         if not items:
-            aggregated_error_logs += "Error: No pods were created in the namespace.\n"
+            pod_error_list.append({
+                "pod_name": "unknown",
+                "component_name": "unknown",
+                "phase": "Error",
+                "events": "No pods were created in the namespace.",
+                "logs": "",
+            })
         else:
+            # Use a dict to keep only the newest pod per component
+            component_errors_dict = {}
+            
             for pod in items:
                 pod_name = pod["metadata"]["name"]
                 
                 # If a pod is NOT in our healthy_pods set, it's the one that failed
                 if pod_name not in healthy_pods:
                     phase = pod.get("status", {}).get("phase", "Unknown")
+                    component_name = _extract_component_name(pod_name)
+                    creation_time = pod["metadata"].get("creationTimestamp", "")
+                    
                     send_terminal_message(project_id, f"📋 Fetching logs for unhealthy pod: {pod_name}\n\r")
                     
                     # Grab application logs
@@ -124,7 +165,31 @@ async def deployment_monitor_agent(state):
                     )
                     events_out, _ = await events_proc.communicate()
                     
-                    aggregated_error_logs += f"=== Pod: {pod_name} ===\nPhase: {phase}\nEvents:\n{events_out.decode()}\nLogs:\n{logs_out.decode()[:2000]}\n{logs_err.decode()}\n\n"
+                    pod_logs = logs_out.decode()[:2000]
+                    if logs_err.decode().strip():
+                        pod_logs += f"\nStderr: {logs_err.decode()[:500]}"
+                    
+                    new_error_record = {
+                        "pod_name": pod_name,
+                        "component_name": component_name,
+                        "phase": phase,
+                        "events": events_out.decode(),
+                        "logs": pod_logs,
+                        "creationTimestamp": creation_time,
+                    }
+                    
+                    # Only replace if this pod is newer, or if we haven't seen this component yet
+                    if component_name not in component_errors_dict:
+                        component_errors_dict[component_name] = new_error_record
+                    else:
+                        existing_time = component_errors_dict[component_name]["creationTimestamp"]
+                        if creation_time > existing_time:
+                            component_errors_dict[component_name] = new_error_record
+
+            for rec in component_errors_dict.values():
+                # Remove the temporary timestamp before appending
+                rec.pop("creationTimestamp", None)
+                pod_error_list.append(rec)
                     
     # 3. Final Return
     if all_pods_ready:
@@ -137,5 +202,5 @@ async def deployment_monitor_agent(state):
         return {
             "deployment_status": "failed",
             "access_url": access_url,
-            "deployment_error_logs": aggregated_error_logs
+            "deployment_error_logs": pod_error_list,
         }

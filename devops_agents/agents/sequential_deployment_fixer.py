@@ -242,31 +242,66 @@ async def sequential_deployment_fixer(state: dict) -> dict:
     Main orchestrator node for the post-processing graph.
     
     Classifies errors, then fixes them sequentially:
-    1. Application errors (fix source → push → wait for rebuild)
+    1. Application errors (fix source → push → wait for rebuild → rollout restart)
     2. Image creation errors (not yet handled — logged for awareness)
     3. GitOps errors (fix manifests → push to GitOps)
     4. Ingress issues (fix ingress.yaml → push to GitOps)
+    
+    Components with needs_fix=False are skipped (dependency-only failures).
+    
+    IMPORTANT: App fixes rebuild the same image tag (e.g., '1.0'). Since the
+    K8s Deployment YAML doesn't change, ArgoCD sees no diff. We must force
+    a `kubectl rollout restart` so K8s pulls the new image from ECR.
     """
     project_id = state.get("project_id", "")
-    error_logs = state.get("deployment_error_logs", "")
+    pod_errors = state.get("deployment_error_logs") or []
     gitops_dir = state.get("gitops_dir", "")
     retry_count = state.get("retry_count", 0)
     component_mirror_paths = state.get("component_mirror_paths") or {}
     repo_owner = state.get("repo_owner", "")
     repo_name = state.get("repo_name", "")
+    namespace = project_id  # namespace == project_id
     
     send_terminal_message(project_id, f"🔄 Sequential Deployment Fixer (Attempt {retry_count + 1})...\n\r")
     
-    # ---- Step 1: Classify errors ----
-    classification = await classify_deployment_errors(error_logs, project_id)
+    # ---- Step 1: Classify errors (pass structured pod errors) ----
+    classification = await classify_deployment_errors(pod_errors, project_id)
     
-    # Group by error type
-    app_errors = [e for e in classification.component_errors if e.error_type == "application_error"]
-    image_errors = [e for e in classification.component_errors if e.error_type == "image_creation_error"]
-    gitops_errors = [e for e in classification.component_errors if e.error_type == "gitops_fix"]
-    ingress_errors = [e for e in classification.component_errors if e.error_type == "ingress_issue"]
+    # Filter: only process components that actually need a fix
+    fixable_errors = [e for e in classification.component_errors if e.needs_fix]
+    skipped_errors = [e for e in classification.component_errors if not e.needs_fix]
+    
+    if skipped_errors:
+        send_terminal_message(
+            project_id,
+            f"⏭️ Skipping {len(skipped_errors)} component(s) that will self-recover: "
+            f"{', '.join(e.component_name for e in skipped_errors)}\n\r",
+        )
+    
+    # Group fixable errors by error type
+    app_errors = [e for e in fixable_errors if e.error_type == "application_error"]
+    image_errors = [e for e in fixable_errors if e.error_type == "image_creation_error"]
+    gitops_errors = [e for e in fixable_errors if e.error_type == "gitops_fix"]
+    ingress_errors = [e for e in fixable_errors if e.error_type == "ingress_issue"]
     
     any_fix_applied = False
+    
+    # Helper: build a readable error string for a component from structured pod data
+    def _build_error_context(component_name: str) -> str:
+        """Extract relevant pod error logs for a given component."""
+        relevant = [pe for pe in pod_errors if pe.get("component_name") == component_name]
+        if not relevant:
+            # Fallback: try partial match
+            relevant = [pe for pe in pod_errors if component_name in pe.get("pod_name", "")]
+        parts = []
+        for pe in relevant:
+            parts.append(
+                f"Pod: {pe.get('pod_name')}\n"
+                f"Phase: {pe.get('phase')}\n"
+                f"Events:\n{pe.get('events', 'N/A')}\n"
+                f"Logs:\n{pe.get('logs', 'N/A')}"
+            )
+        return "\n\n".join(parts) if parts else "No detailed logs available."
     
     # ---- Step 2: Fix application errors ----
     if app_errors:
@@ -290,10 +325,12 @@ async def sequential_deployment_fixer(state: dict) -> dict:
                 await AsyncGitTools.clone_repository(repo_url, local_path)
                 component_mirror_paths[comp_name] = local_path
             
+            error_context = _build_error_context(comp_name)
+            
             result = await run_app_error_fixer(
                 project_id=project_id,
                 component_name=comp_name,
-                error_logs=ce.error_summary + "\n\nFull logs:\n" + error_logs,
+                error_logs=f"{ce.error_summary}\n\nDetailed pod logs:\n{error_context}",
                 app_local_path=local_path,
             )
             
@@ -309,7 +346,19 @@ async def sequential_deployment_fixer(state: dict) -> dict:
                     local_path=local_path,
                 )
                 
-                if not rebuild_success:
+                if rebuild_success:
+                    # CRITICAL: The image was rebuilt with the SAME tag (e.g., '1.0').
+                    # ArgoCD sees no diff in the GitOps repo since the image URL hasn't changed.
+                    # We must force K8s to pull the new image via rollout restart.
+                    send_terminal_message(
+                        project_id,
+                        f"🔄 Forcing rollout restart for {comp_name} to pull new image...\n\r",
+                    )
+                    subprocess.run(
+                        ["kubectl", "rollout", "restart", f"deployment/{comp_name}", "-n", namespace],
+                        check=False, capture_output=True,
+                    )
+                else:
                     send_terminal_message(
                         project_id,
                         f"⚠️ Image rebuild failed for {comp_name} after app fix. Will continue with other fixes.\n\r",
@@ -322,8 +371,6 @@ async def sequential_deployment_fixer(state: dict) -> dict:
             f"🏗️ Phase 2: {len(image_errors)} image build error(s) detected. "
             f"These require CI/CD pipeline fixes and will be retried on next build cycle.\n\r",
         )
-        # Image creation errors are tricky in the post-deployment phase.
-        # Log them but they should have been caught in the component_graph phase.
         for ce in image_errors:
             send_terminal_message(
                 project_id,
@@ -352,8 +399,10 @@ async def sequential_deployment_fixer(state: dict) -> dict:
         if ingress_fixed:
             any_fix_applied = True
     
-    # ---- Step 6: Trigger ArgoCD sync if gitops/ingress were fixed ----
-    if any_fix_applied and (gitops_errors or ingress_errors):
+    # ---- Step 6: Trigger ArgoCD sync for ANY fix ----
+    # Even app error fixes need this: the image tag stays the same (e.g., '1.0'),
+    # so ArgoCD won't detect a change unless we force a refresh.
+    if any_fix_applied:
         send_terminal_message(project_id, "🔄 Triggering ArgoCD sync after fixes...\n\r")
         app_name = f"app-{project_id}"
         subprocess.run(
@@ -384,5 +433,6 @@ async def sequential_deployment_fixer(state: dict) -> dict:
             "image_errors": len(image_errors),
             "gitops_errors": len(gitops_errors),
             "ingress_errors": len(ingress_errors),
+            "skipped": len(skipped_errors),
         },
     }
