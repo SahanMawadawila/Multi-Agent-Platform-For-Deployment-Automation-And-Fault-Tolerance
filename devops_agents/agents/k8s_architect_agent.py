@@ -39,14 +39,39 @@ async def k8s_architect_agent(state):
 
     port = component.get("port")
     health_path = component.get("health_check_path", "/")
+    
+    # Paketo NGINX buildpack runs on port 8080 (non-root user can't bind 80).
+    # Override if the plan says port 80 for a frontend/React component.
+    project_type = (component.get("project_type") or "").lower()
+    comp_name_lower = (component_name or "").lower()
+    is_frontend = (
+        project_type in ("react", "vue", "angular", "svelte", "vite", "frontend")
+        or "frontend" in comp_name_lower
+    )
+    if is_frontend and (not port or port == 80):
+        port = 8080
+        send_terminal_message(
+            project_id,
+            f"🔧 Overriding port to 8080 for buildpack NGINX frontend\n\r",
+            component_name,
+        )
 
     # Template data
+    # service_port = external port the K8s Service exposes (what ingress/other services connect to)
+    # port = actual container port (what the process inside the container listens on)
+    container_port = port or 3000
+    service_port = component.get("port") or container_port  # original plan port for the Service
+    if is_frontend and service_port == 8080:
+        # Service should still expose 80 externally even though container runs on 8080
+        service_port = 80
+    
     data = {
         "app_name": app_name,
         "namespace": namespace,
         "replicas": 1,
         "image_url": state.get("image_url"),
-        "port": port or 3000,
+        "port": container_port,
+        "service_port": service_port,
         "memory_request": resources.get("memory_request", "512Mi"),
         "cpu_request": resources.get("cpu_request", "200m"),
         "memory_limit": resources.get("memory_limit", "768Mi"),

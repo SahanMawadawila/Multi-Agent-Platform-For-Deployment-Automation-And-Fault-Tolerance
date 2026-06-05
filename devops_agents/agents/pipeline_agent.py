@@ -83,20 +83,54 @@ def _normalize_component_path(component_path: str | None) -> str | None:
   return clean or None
 
 
-def _buildpack_env_flags(component: dict, component_path: str | None, local_path: str) -> tuple[str, str]:
-  """Return (build_path, env_flags) for pack build."""
+def _is_frontend_component(component: dict, local_path: str) -> bool:
+  """Detect if a component is a frontend/React app that needs NGINX web server."""
+  project_type = (component.get("project_type") or "").lower()
+  comp_name = (component.get("name") or "").lower()
+  
+  # Check by project type
+  if project_type in ("react", "vue", "angular", "svelte", "vite", "nextjs-static", "frontend"):
+    return True
+  
+  # Check by component name
+  if "frontend" in comp_name or "ui" == comp_name or "web" == comp_name:
+    # Verify it's a Node.js project (has package.json) and not a backend API
+    comp_path = component.get("path") or "."
+    normalized = _normalize_component_path(comp_path)
+    pkg_dir = os.path.join(local_path, normalized) if normalized else local_path
+    if os.path.isfile(os.path.join(pkg_dir, "package.json")):
+      return True
+  
+  return False
+
+
+def _buildpack_env_flags(component: dict, component_path: str | None, local_path: str) -> tuple[str, str, str]:
+  """Return (build_path, env_flags, builder) for pack build.
+  
+  For React/frontend apps, uses the full builder with NGINX web server.
+  For backend apps, uses the base builder.
+  """
   project_type = (component.get("project_type") or "").lower()
   package_manager = (component.get("package_manager") or "").lower()
   version = component.get("version")
+  is_frontend = _is_frontend_component(component, local_path)
 
   env_flags: list[str] = []
   build_path = component_path or "."
+  # Frontend apps need the full builder (includes NGINX buildpack)
+  builder = "paketobuildpacks/builder-jammy-full" if is_frontend else "paketobuildpacks/builder-jammy-base"
+
+  # Frontend/React: tell buildpacks to use NGINX to serve static files
+  if is_frontend:
+    env_flags.append("--env BP_WEB_SERVER=nginx")
+    env_flags.append("--env BP_WEB_SERVER_ROOT=dist")
+    env_flags.append("--env BP_NODE_RUN_SCRIPTS=build")
 
   # Version pinning for buildpacks (optional but improves reliability)
   if version:
     if project_type in ("python",):
       env_flags.append(f"--env BP_PYTHON_VERSION={version}")
-    elif project_type in ("node", "nodejs", "javascript", "typescript"):
+    elif project_type in ("node", "nodejs", "javascript", "typescript", "react", "vue", "angular", "frontend"):
       env_flags.append(f"--env BP_NODE_VERSION={version}")
     elif project_type in ("springboot", "java"):
       env_flags.append(f"--env BP_JVM_VERSION={version}")
@@ -121,7 +155,7 @@ def _buildpack_env_flags(component: dict, component_path: str | None, local_path
           env_flags.append(f"--env BP_GRADLE_BUILT_MODULE={component_path}")
       else:
         build_path = component_path
-    elif project_type in ("node", "nodejs", "javascript", "typescript") and (root_pnpm or root_yarn or root_npm):
+    elif project_type in ("node", "nodejs", "javascript", "typescript", "react", "vue", "angular", "frontend") and (root_pnpm or root_yarn or root_npm):
       build_path = "."
       env_flags.append(f"--env BP_NODE_PROJECT_PATH={component_path}")
 
@@ -129,7 +163,7 @@ def _buildpack_env_flags(component: dict, component_path: str | None, local_path
   if env_flags:
     env_block = "\\\n          " + " \\\n          ".join(env_flags) + " "
 
-  return build_path, env_block
+  return build_path, env_block, builder
 
 
 # ============== WORKFLOW TEMPLATE ==============
@@ -140,6 +174,7 @@ def generate_workflow_content(
   branch_name: str = None,
   buildpack_path: str = ".",
   buildpack_envs: str = "",
+  builder: str = "paketobuildpacks/builder-jammy-base",
 ) -> str:
   """Generate GitHub Actions workflow for building and pushing an image using Cloud Native Buildpacks."""
   branches = f'[ "{branch_name}" ]' if branch_name else '[ "main", "master" ]'
@@ -181,11 +216,6 @@ jobs:
       - name: Setup pack CLI
         uses: buildpacks/github-actions/setup-pack@v5.0.0
 
-      - name: Prepare environment (Fix for NGINX logs)
-        run: |
-          mkdir -p {buildpack_path}/logs
-          touch {buildpack_path}/logs/.keep
-
       - name: Build and push image using Cloud Native Buildpacks
         id: build-image
         env:
@@ -195,7 +225,7 @@ jobs:
           rm -f {buildpack_path}/mvnw {buildpack_path}/mvnw.cmd
           pack build $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \\
           --path {buildpack_path} {buildpack_envs}\\
-          --builder paketobuildpacks/builder-jammy-base \\
+          --builder {builder} \\
           --publish
 """
 
@@ -244,7 +274,11 @@ async def pipeline_writing_agent(state: AgentState):
     raw_component_path = component.get("path")
     component_path = _normalize_component_path(raw_component_path)
     
-    buildpack_path, buildpack_envs = _buildpack_env_flags(component, component_path, local_path)
+    buildpack_path, buildpack_envs, builder = _buildpack_env_flags(component, component_path, local_path)
+    
+    is_frontend = _is_frontend_component(component, local_path)
+    if is_frontend:
+        send_terminal_message(project_id, f"🌐 Detected frontend app — using NGINX web server buildpack\n\r", component_name)
 
     workflow_content = generate_workflow_content(
       aws_region=settings.aws_region,
@@ -253,6 +287,7 @@ async def pipeline_writing_agent(state: AgentState):
       branch_name=branch_name,
       buildpack_path=buildpack_path,
       buildpack_envs=buildpack_envs,
+      builder=builder,
     )
 
     workflow_name = "ci.yml"
