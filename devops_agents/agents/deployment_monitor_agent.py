@@ -36,7 +36,7 @@ def _extract_component_name(pod_name: str) -> str:
 async def deployment_monitor_agent(state):
     project_id = state.get("project_id", "")
     
-    send_terminal_message(project_id, "🔭 Starting Deployment Monitor (2-minute fast scan)...\n\r")
+    send_terminal_message(project_id, "🔭 Starting Deployment Monitor (8-minute fast scan)...\n\r")
     
     namespace = project_id
     host = f"app-{project_id}.{settings.domain_name}"
@@ -45,7 +45,7 @@ async def deployment_monitor_agent(state):
     send_terminal_message(project_id, "⏳ Waiting for ArgoCD to sync and create pods...\n\r")
     await asyncio.sleep(15) 
     
-    timeout = 240 # Reduced to 3 minutes
+    timeout = 480 # Reduced to 3 minutes
     start_time = time.time()
     
     # THE IGNORE ARRAY: Track pods that successfully spin up so we stop checking them
