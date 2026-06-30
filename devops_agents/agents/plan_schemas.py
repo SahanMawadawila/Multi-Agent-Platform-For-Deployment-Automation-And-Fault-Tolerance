@@ -281,6 +281,18 @@ class InfrastructureComponent(BaseModel):
         None,
         description="Optional any snippet of yaml manifest found in the codebase for this infrastructure component"
     )
+    template_key: Optional[str] = Field(
+        None,
+        description="Registry template key (e.g., 'postgresql', 'kafka'). None = custom/unsupported, uses LLM fallback."
+    )
+    version_warning: Optional[str] = Field(
+        None,
+        description="Warning about version compatibility shown during plan review (e.g., 'Your code uses Spring Kafka 2.x which is best compatible with Kafka 7.4.0')"
+    )
+    supported_versions: Optional[List[str]] = Field(
+        None,
+        description="List of tested image versions from the registry (e.g., ['16-alpine', '15-alpine', '14-alpine'] for PostgreSQL)"
+    )
 
     @field_validator('resources', mode='before')
     @classmethod

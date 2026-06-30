@@ -15,6 +15,8 @@ import { PlanNode } from "./PlanNode";
 import { ApplicationDetailPanel } from "./ApplicationDetailPanel";
 import { InfrastructureDetailPanel } from "./InfrastructureDetailPanel";
 import { ConnectionDetailPanel } from "./ConnectionDetailPanel";
+import { infraRegistry } from "../../lib/infraRegistry";
+import { Plus } from "lucide-react";
 
 interface DeploymentPlanEditorProps {
   plan: any;
@@ -40,6 +42,7 @@ export function DeploymentPlanEditor({
     number | null
   >(null);
   const [editablePlan, setEditablePlan] = useState<any>(plan);
+  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
 
   // Initialize map and nodes on plan load
   useEffect(() => {
@@ -144,6 +147,53 @@ export function DeploymentPlanEditor({
     }
   };
 
+  const handleAddInfra = (registryKey: string) => {
+    const registryEntry = infraRegistry[registryKey];
+    if (!registryEntry) return;
+
+    const newComp = {
+      name: `new-${registryKey}`,
+      type: "infrastructure",
+      scope: "project",
+      category: registryEntry.category,
+      image: registryEntry.default_image,
+      port: registryEntry.default_port,
+      template_key: registryKey,
+      supported_versions: registryEntry.supported_versions || [],
+      credentials: {},
+      env_variables: [],
+      resources: registryEntry.default_resources || {},
+      storage: registryEntry.default_storage || null
+    };
+
+    const newPlan = { ...editablePlan };
+    newPlan.components = [...(editablePlan.components || []), newComp];
+    setEditablePlan(newPlan);
+    onSave(newPlan);
+    setIsAddMenuOpen(false);
+  };
+
+  const handleDeleteComponent = (index: number) => {
+    if (index === null) return;
+    
+    const compToDelete = editablePlan.components[index];
+    const newPlan = { ...editablePlan };
+    
+    // Remove component
+    newPlan.components = editablePlan.components.filter((_: any, i: number) => i !== index);
+    
+    // Remove connections
+    if (newPlan.connections) {
+      newPlan.connections = newPlan.connections.filter(
+        (conn: any) => conn.from_component !== compToDelete.name && conn.to_component !== compToDelete.name
+      );
+    }
+
+    setEditablePlan(newPlan);
+    onSave(newPlan);
+    setSelectedComponentIndex(null);
+  };
+
   return (
     <div className="w-full h-full flex bg-slate-950 text-slate-200">
       <div className="flex-grow h-full relative">
@@ -161,7 +211,29 @@ export function DeploymentPlanEditor({
           <Controls className="bg-slate-800 border-slate-700 fill-slate-300" />
         </ReactFlow>
 
-        {/* Overlaid UI or buttons can go here */}
+        <div className="absolute top-4 right-4 z-10">
+          <div className="relative">
+            <button
+              onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
+              className="bg-violet-600 hover:bg-violet-500 text-white px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2 shadow-lg"
+            >
+              <Plus size={16} /> Add Infra
+            </button>
+            {isAddMenuOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-slate-800 border border-slate-700 rounded-md shadow-xl overflow-hidden">
+                {Object.keys(infraRegistry).map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => handleAddInfra(key)}
+                    className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white"
+                  >
+                    {infraRegistry[key].display_name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {selectedComponentIndex !== null &&
@@ -173,6 +245,7 @@ export function DeploymentPlanEditor({
                 component={editablePlan.components[selectedComponentIndex]}
                 onUpdate={handleComponentUpdate}
                 onClose={() => setSelectedComponentIndex(null)}
+                onDelete={() => handleDeleteComponent(selectedComponentIndex)}
               />
             ) : (
               <ApplicationDetailPanel

@@ -1,0 +1,100 @@
+# PostgreSQL StatefulSet + Service + PVC + Secret
+# Tested template — includes PGDATA subdirectory fix to avoid lost+found errors
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ service_name }}-secret
+  namespace: {{ namespace }}
+type: Opaque
+stringData:
+{% for key, val in credentials.items() %}
+  {{ val.env_key }}: "{{ val.value }}"
+{% endfor %}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ service_name }}-pvc
+  namespace: {{ namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ storage_class }}
+  resources:
+    requests:
+      storage: {{ storage_size }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ service_name }}
+  namespace: {{ namespace }}
+spec:
+  serviceName: {{ service_name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ service_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ service_name }}
+    spec:
+      containers:
+      - name: {{ service_name }}
+        image: {{ image }}
+        ports:
+        - containerPort: {{ port }}
+        envFrom:
+        - secretRef:
+            name: {{ service_name }}-secret
+        env:
+{% for env in env_variables %}
+        - name: {{ env.key }}
+          value: "{{ env.value }}"
+{% endfor %}
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            cpu: "{{ cpu_request }}"
+            memory: "{{ memory_request }}"
+          limits:
+            cpu: "{{ cpu_limit }}"
+            memory: "{{ memory_limit }}"
+        startupProbe:
+          exec:
+            command: ["pg_isready", "-U", "{{ credentials.db_user.value }}"]
+          failureThreshold: 30
+          periodSeconds: 5
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "{{ credentials.db_user.value }}"]
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command: ["pg_isready", "-U", "{{ credentials.db_user.value }}"]
+          initialDelaySeconds: 30
+          periodSeconds: 15
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ service_name }}-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ service_name }}
+  namespace: {{ namespace }}
+spec:
+  selector:
+    app: {{ service_name }}
+  ports:
+    - port: {{ port }}
+      targetPort: {{ port }}
+  clusterIP: None

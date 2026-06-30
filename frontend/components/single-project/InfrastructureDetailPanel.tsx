@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from "react";
-import { X, Save, Plus, Trash2 } from "lucide-react";
+import { X, Save, Plus, Trash2, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Button } from "../ui/button";
 
 interface InfrastructureDetailPanelProps {
   component: any;
   onUpdate: (comp: any) => void;
   onClose: () => void;
+  onDelete?: () => void;
 }
 
 export function InfrastructureDetailPanel({
   component,
   onUpdate,
   onClose,
+  onDelete,
 }: InfrastructureDetailPanelProps) {
   const [localComp, setLocalComp] = useState<any>(
     JSON.parse(JSON.stringify(component)),
@@ -80,16 +82,57 @@ export function InfrastructureDetailPanel({
     handleFieldChange("credentials", nextCreds);
   };
 
+  /** When the user picks a version from the dropdown, update the image tag */
+  const handleVersionChange = (newTag: string) => {
+    const currentImage = localComp.image || "";
+    // Replace the tag portion: "postgres:16-alpine" -> "postgres:15-alpine"
+    const imageBase = currentImage.includes(":")
+      ? currentImage.substring(0, currentImage.lastIndexOf(":"))
+      : currentImage;
+    handleFieldChange("image", `${imageBase}:${newTag}`);
+  };
+
+  const supportedVersions: string[] = localComp.supported_versions || [];
+  const isTemplated = !!localComp.template_key;
+  const versionWarning: string | null = localComp.version_warning || null;
+
+  // Extract current tag from image
+  const currentTag = localComp.image?.includes(":")
+    ? localComp.image.split(":").pop()
+    : "";
+
   return (
     <div className="flex flex-col h-full bg-slate-900 border-l border-slate-800 text-slate-200">
       <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900/50">
-        <h3 className="font-semibold text-lg">{localComp.name} Settings</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-lg">{localComp.name} Settings</h3>
+          {isTemplated ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <CheckCircle2 size={12} /> Tested Template
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <AlertTriangle size={12} /> Custom (AI)
+            </span>
+          )}
+        </div>
         <button onClick={onClose} className="text-slate-400 hover:text-white">
           <X size={20} />
         </button>
       </div>
 
       <div className="flex-grow p-5 space-y-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
+        {/* Version Warning Banner */}
+        {versionWarning && (
+          <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <AlertTriangle size={18} className="text-amber-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-300">Version Compatibility</p>
+              <p className="text-xs text-amber-200/80 mt-1">{versionWarning}</p>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-4">
           <h4 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">
             General
@@ -161,15 +204,48 @@ export function InfrastructureDetailPanel({
                 />
               </div>
             </div>
+
+            {/* Image + Version */}
             <div>
               <label className="text-xs text-slate-400 mb-1 block">Image</label>
-              <input
-                className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
-                value={localComp.image || ""}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  handleFieldChange("image", e.target.value)
-                }
-              />
+              {supportedVersions.length > 0 ? (
+                <div className="flex gap-2">
+                  <input
+                    className="flex-grow bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2 text-slate-400"
+                    value={
+                      localComp.image?.includes(":")
+                        ? localComp.image.substring(
+                            0,
+                            localComp.image.lastIndexOf(":"),
+                          )
+                        : localComp.image || ""
+                    }
+                    readOnly
+                    title="Image base is managed by the template"
+                  />
+                  <select
+                    className="w-36 bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
+                    value={currentTag}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                      handleVersionChange(e.target.value)
+                    }
+                  >
+                    {supportedVersions.map((ver: string) => (
+                      <option key={ver} value={ver}>
+                        {ver}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <input
+                  className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2"
+                  value={localComp.image || ""}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    handleFieldChange("image", e.target.value)
+                  }
+                />
+              )}
             </div>
           </div>
         </div>
@@ -374,13 +450,22 @@ export function InfrastructureDetailPanel({
         </div>
       </div>
 
-      <div className="p-4 border-t border-slate-800 bg-slate-900/50">
+      <div className="p-4 border-t border-slate-800 bg-slate-900/50 flex gap-2">
         <Button
-          className="w-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center gap-2"
+          className="flex-1 bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center gap-2"
           onClick={handleSave}
         >
           <Save size={16} /> Save Changes
         </Button>
+        {onDelete && (
+          <Button
+            variant="destructive"
+            className="flex-none flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20"
+            onClick={onDelete}
+          >
+            <Trash2 size={16} /> Delete
+          </Button>
+        )}
       </div>
     </div>
   );

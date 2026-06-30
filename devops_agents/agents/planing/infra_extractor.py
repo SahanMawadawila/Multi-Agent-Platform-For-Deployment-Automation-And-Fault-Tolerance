@@ -1,11 +1,16 @@
 """Sub-agent: extract infrastructure components from explicit repo sources."""
 
+import json
+import os
+import logging
 from typing import List
 
 from pydantic import BaseModel, Field
 
 from agents.plan_schemas import InfrastructureComponent
 from .agent_runner import run_agent
+
+logger = logging.getLogger("infra_extractor")
 
 
 class InfraExtractionResult(BaseModel):
@@ -57,6 +62,122 @@ Files in the repository:
 """
 
 
+# ---------------------------------------------------------------------------
+# Registry post-processing
+# ---------------------------------------------------------------------------
+
+_registry_cache = None
+
+
+def _load_registry() -> dict:
+    """Load the infra registry JSON."""
+    global _registry_cache
+    if _registry_cache is not None:
+        return _registry_cache
+
+    # __file__ is at agents/planing/infra_extractor.py
+    # Go up 3 levels: planing -> agents -> devops_agents (project root)
+    agents_dir = os.path.dirname(os.path.abspath(__file__))       # agents/planing/
+    agents_parent = os.path.dirname(agents_dir)                    # agents/
+    project_root = os.path.dirname(agents_parent)                  # devops_agents/
+    config_path = os.path.join(project_root, "config", "infra_registry.json")
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            _registry_cache = json.load(f)
+    except Exception:
+        _registry_cache = {}
+    return _registry_cache
+
+
+def _match_registry_key(component: InfrastructureComponent) -> str | None:
+    """Match a component to a registry key by name or image."""
+    registry = _load_registry()
+
+    comp_name = (component.name or "").lower()
+    comp_image = (component.image or "").lower()
+
+    aliases = {
+        "postgresql": ["postgres", "postgresql", "pg"],
+        "mongodb": ["mongo", "mongodb"],
+        "mysql": ["mysql", "mariadb"],
+        "redis": ["redis"],
+        "rabbitmq": ["rabbitmq", "rabbit"],
+        "kafka": ["kafka"],
+    }
+
+    for reg_key, keywords in aliases.items():
+        for kw in keywords:
+            if kw in comp_name or kw in comp_image:
+                if reg_key in registry:
+                    return reg_key
+
+    return None
+
+
+def _post_process_with_registry(
+    components: List[InfrastructureComponent],
+) -> List[InfrastructureComponent]:
+    """
+    Post-process LLM-extracted infra components against the template registry.
+
+    For each component:
+      - Set template_key if it matches a registry entry
+      - Override image to a tested version if the LLM picked something untested
+      - Populate supported_versions so frontend can offer a dropdown
+      - Set default credentials from registry if LLM missed them
+    """
+    registry = _load_registry()
+
+    for comp in components:
+        reg_key = _match_registry_key(comp)
+        if not reg_key:
+            # Not in registry — will use LLM fallback at deployment time
+            logger.info(f"Infra component '{comp.name}' not in registry — will use LLM fallback")
+            continue
+
+        entry = registry[reg_key]
+        comp.template_key = reg_key
+        comp.supported_versions = entry.get("supported_versions", [])
+
+        # Validate image — if LLM picked an untested version, use registry default
+        supported = entry.get("supported_versions", [])
+        if supported:
+            # Extract the tag from the image (e.g., "postgres:16-alpine" -> "16-alpine")
+            image_tag = comp.image.split(":")[-1] if ":" in comp.image else ""
+            if image_tag not in supported:
+                default_image = entry.get("default_image", comp.image)
+                logger.info(
+                    f"Image tag '{image_tag}' for {comp.name} not in tested versions {supported}. "
+                    f"Overriding to '{default_image}'"
+                )
+                comp.image = default_image
+
+        # Ensure port matches registry default if LLM got it wrong
+        default_port = entry.get("default_port")
+        if default_port and comp.port != default_port:
+            logger.info(f"Overriding port for {comp.name}: {comp.port} -> {default_port}")
+            comp.port = default_port
+
+        # Fill in missing credentials from registry defaults
+        default_creds = entry.get("default_credentials", {})
+        existing_cred_keys = set(comp.credentials.keys()) if comp.credentials else set()
+        for cred_key, cred_spec in default_creds.items():
+            if cred_key not in existing_cred_keys:
+                from agents.plan_schemas import CredentialField
+                comp.credentials[cred_key] = CredentialField(
+                    value="",
+                    source="auto_generate" if cred_spec.get("default") == "auto_generate" else "detected",
+                    editable=True,
+                    sensitive=True,
+                )
+
+    return components
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
 async def run_infra_extractor(
     *,
     file_list_str: str,
@@ -81,4 +202,7 @@ async def run_infra_extractor(
         logger=logger,
     )
 
-    return result.components
+    # Post-process against the template registry
+    components = _post_process_with_registry(result.components)
+
+    return components

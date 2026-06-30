@@ -1,0 +1,63 @@
+# Redis Deployment + Service (no PVC by default — Redis is ephemeral cache)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ service_name }}
+  namespace: {{ namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ service_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ service_name }}
+    spec:
+      containers:
+      - name: {{ service_name }}
+        image: {{ image }}
+        ports:
+        - containerPort: {{ port }}
+{% if env_variables %}
+        env:
+{% for env in env_variables %}
+        - name: {{ env.key }}
+          value: "{{ env.value }}"
+{% endfor %}
+{% endif %}
+        resources:
+          requests:
+            cpu: "{{ cpu_request }}"
+            memory: "{{ memory_request }}"
+          limits:
+            cpu: "{{ cpu_limit }}"
+            memory: "{{ memory_limit }}"
+        startupProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          failureThreshold: 30
+          periodSeconds: 3
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 15
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ service_name }}
+  namespace: {{ namespace }}
+spec:
+  selector:
+    app: {{ service_name }}
+  ports:
+    - port: {{ port }}
+      targetPort: {{ port }}

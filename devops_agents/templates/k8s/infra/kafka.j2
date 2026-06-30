@@ -1,0 +1,204 @@
+# Kafka + Zookeeper — bundled template
+# Includes all error_fixus.json fixes baked in:
+#   - enableServiceLinks: false (prevents K8s KAFKA_PORT injection crash)
+#   - Memory >= 1Gi, CPU >= 500m
+#   - tcpSocket probes (not exec kafka-topics)
+#   - Recreate strategy (prevents NodeExistsException)
+#   - Zookeeper fsGroup: 1000 for write permissions
+---
+# ========== ZOOKEEPER ==========
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ service_name }}-zookeeper-pvc
+  namespace: {{ namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ storage_class }}
+  resources:
+    requests:
+      storage: {{ storage_size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ service_name }}-zookeeper
+  namespace: {{ namespace }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ service_name }}-zookeeper
+  template:
+    metadata:
+      labels:
+        app: {{ service_name }}-zookeeper
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+      - name: zookeeper
+        image: {{ zookeeper_image }}
+        ports:
+        - containerPort: {{ zookeeper_port }}
+        env:
+        - name: ZOOKEEPER_CLIENT_PORT
+          value: "{{ zookeeper_port }}"
+        - name: ZOOKEEPER_TICK_TIME
+          value: "2000"
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/zookeeper/data
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        startupProbe:
+          tcpSocket:
+            port: {{ zookeeper_port }}
+          failureThreshold: 30
+          periodSeconds: 5
+        readinessProbe:
+          tcpSocket:
+            port: {{ zookeeper_port }}
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: {{ zookeeper_port }}
+          initialDelaySeconds: 30
+          periodSeconds: 15
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ service_name }}-zookeeper-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ service_name }}-zookeeper
+  namespace: {{ namespace }}
+spec:
+  selector:
+    app: {{ service_name }}-zookeeper
+  ports:
+    - port: {{ zookeeper_port }}
+      targetPort: {{ zookeeper_port }}
+---
+# ========== KAFKA ==========
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ service_name }}-pvc
+  namespace: {{ namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ storage_class }}
+  resources:
+    requests:
+      storage: {{ storage_size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ service_name }}
+  namespace: {{ namespace }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ service_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ service_name }}
+    spec:
+      securityContext:
+        fsGroup: 1000
+      # CRITICAL: Prevents K8s from injecting KAFKA_PORT env var which crashes
+      # Confluent's startup script
+      enableServiceLinks: false
+      containers:
+      - name: kafka
+        image: {{ image }}
+        ports:
+        - containerPort: {{ port }}
+          name: external
+        - containerPort: {{ internal_port }}
+          name: internal
+        env:
+{% for env in env_variables %}
+        - name: {{ env.key }}
+          value: "{{ env.value }}"
+{% endfor %}
+        - name: KAFKA_BROKER_ID
+          value: "1"
+        - name: KAFKA_ZOOKEEPER_CONNECT
+          value: "{{ service_name }}-zookeeper:{{ zookeeper_port }}"
+        - name: KAFKA_LISTENERS
+          value: "PLAINTEXT://0.0.0.0:{{ port }},PLAINTEXT_INTERNAL://0.0.0.0:{{ internal_port }}"
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: "PLAINTEXT://{{ service_name }}:{{ port }},PLAINTEXT_INTERNAL://{{ service_name }}:{{ internal_port }}"
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          value: "PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT"
+        - name: KAFKA_INTER_BROKER_LISTENER_NAME
+          value: "PLAINTEXT_INTERNAL"
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+          value: "true"
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/kafka/data
+        resources:
+          requests:
+            cpu: "{{ cpu_request }}"
+            memory: "{{ memory_request }}"
+          limits:
+            cpu: "{{ cpu_limit }}"
+            memory: "{{ memory_limit }}"
+        # tcpSocket probes — more reliable than exec kafka-topics
+        startupProbe:
+          tcpSocket:
+            port: {{ internal_port }}
+          failureThreshold: 30
+          periodSeconds: 5
+        readinessProbe:
+          tcpSocket:
+            port: {{ internal_port }}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: {{ internal_port }}
+          initialDelaySeconds: 60
+          periodSeconds: 15
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ service_name }}-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ service_name }}
+  namespace: {{ namespace }}
+spec:
+  selector:
+    app: {{ service_name }}
+  ports:
+    - name: external
+      port: {{ port }}
+      targetPort: {{ port }}
+    - name: internal
+      port: {{ internal_port }}
+      targetPort: {{ internal_port }}
