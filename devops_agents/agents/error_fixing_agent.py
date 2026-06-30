@@ -20,7 +20,6 @@ TRANSIENT_ERROR_PATTERNS = [
     r"unable to get dependency",
     r"unable to invoke layer creator",
     r"Downloading from https?://.*\.(tar\.gz|zip)",
-    r"Could not transfer artifact",
     r"Failed to connect to",
     r"Connection timed out",
     r"Connection reset",
@@ -125,13 +124,51 @@ tools = [read_file_structure, read_file, write_file, commit_and_push, FixComplet
 
 # ============== AGENTS ==============
 
-ERROR_FIXING_PROMPT = """You are an expert DevOps and Software Engineer. A CI/CD build has failed. Your job is to fix it.
-Follow this Chain of Thought process:
-1. IDENTIFY: Read the provided error logs. If needed, use `read_file_structure` and `read_file` to inspect the code.
-2. THINK: Think step-by-step about what caused the error and how to solve it.
-3. FIX: Use `write_file` to apply the necessary code changes (e.g., fix dependencies in package.json/pom.xml, fix build scripts, or application code). Note: We use Cloud Native Buildpacks, so there is NO Dockerfile to update.
-4. PUSH: Use `commit_and_push` to save and deploy your fix.
-5. COMPLETE: Call `FixComplete` to end your workflow.
+ERROR_FIXING_PROMPT = """You are an expert DevOps and Software Engineer specializing in Cloud Native Buildpacks and GitHub Actions CI/CD.
+
+A CI/CD build has failed. The build uses **Cloud Native Buildpacks** (via `pack build`) inside a GitHub Actions workflow — there are NO Dockerfiles.
+
+## Error Classification
+First, classify the error into one of these categories:
+
+### Category 1: Buildpack / Pipeline Configuration Error
+The workflow YAML (`.github/workflows/ci-*.yml`) has wrong `pack build` flags.
+Examples:
+- Wrong `--builder` image (e.g., using `builder-jammy-base` when `builder-jammy-full` is needed for frontend/NGINX)
+- Missing or wrong `--env` flags (e.g., `BP_WEB_SERVER=nginx`, `BP_NODE_PROJECT_PATH`, `BP_MAVEN_BUILT_MODULE`, `BP_JVM_VERSION`)
+- Wrong `--path` (pointing to wrong directory in a monorepo)
+- Wrong `BP_WEB_SERVER_ROOT` (e.g., `dist` vs `build` depending on the framework)
+**Fix**: Edit the workflow file at `.github/workflows/ci-*.yml` using `write_file`.
+
+### Category 2: Application Source Code / Dependency Error  
+The app code or config is broken — buildpacks detected it correctly but the code itself is wrong.
+Examples:
+- Missing dependency in `package.json`, `pom.xml`, `requirements.txt`, `go.mod`
+- Syntax error or import error in source code
+- Missing `Procfile` when buildpacks can't auto-detect the start command
+- Wrong `start` script in `package.json`
+- Missing or broken build script (e.g., `npm run build` fails)
+- Incompatible dependency versions
+**Fix**: Edit the application source files using `write_file`.
+
+## Chain of Thought Process
+1. **READ THE ERROR LOGS** carefully. The workflow YAML is provided below the logs — study the `pack build` command, its `--path`, `--env` flags, and `--builder`.
+2. **CLASSIFY** the error into Category 1 or 2 above.
+3. **INVESTIGATE** if needed: use `read_file_structure` and `read_file` to inspect the repository.
+4. **FIX** using `write_file`:
+   - For Category 1: edit `.github/workflows/ci-*.yml`
+   - For Category 2: edit the application source files
+5. **PUSH** using `commit_and_push`.
+6. **COMPLETE** by calling `FixComplete`.
+
+## CRITICAL RULES
+- **NEVER create a Dockerfile.** This project uses Cloud Native Buildpacks exclusively.
+- **NEVER remove the `pack build` step** or replace it with `docker build`.
+- When editing the workflow YAML, preserve the overall structure — only change the specific flags/env vars that are wrong.
+- If the error mentions a missing buildpack (e.g., "no valid buildpacks"), the `--builder` or `--path` is likely wrong.
+- If the error mentions "unable to find" a file or module, check if `--path` or `BP_NODE_PROJECT_PATH`/`BP_MAVEN_BUILT_MODULE` is correct.
+- For frontend apps that produce static files (React, Vue, Angular, Vite), the builder must be `paketobuildpacks/builder-jammy-full` and `BP_WEB_SERVER=nginx` must be set.
+- `BP_WEB_SERVER_ROOT` should match the framework's output directory (`dist` for Vite/Vue, `build` for Create React App, `out` for Next.js static export).
 """
 
 async def error_fixing_agent(state):
@@ -167,9 +204,30 @@ async def error_fixing_agent(state):
     llm_with_tools = llm.bind_tools(tools)
     
     if not error_fixing_messages:
-        # First failure
+        # First failure — inject workflow file content for full context
         send_terminal_message(project_id, "🛠️ Analyzing and fixing build failure...\n\r", component_name)
-        initial_human = HumanMessage(content=f"The build failed with this error:\n\n{error_logs}\n\nPlease analyze and fix it.")
+        
+        # Auto-read the workflow file so the LLM can see the pack build command
+        workflow_context = ""
+        local_path = state.get("local_path", "")
+        if local_path:
+            workflow_name = f"ci-{component_name}.yml" if component_name else "ci.yml"
+            workflow_path = os.path.join(local_path, ".github", "workflows", workflow_name)
+            try:
+                if os.path.isfile(workflow_path):
+                    with open(workflow_path, "r", encoding="utf-8") as wf:
+                        workflow_content = wf.read()
+                    workflow_context = f"\n\n--- Current Workflow File (.github/workflows/{workflow_name}) ---\n{workflow_content}\n--- End Workflow File ---"
+            except Exception as e:
+                logger.warning(f"[{project_id}] Could not read workflow file: {e}")
+        
+        initial_human = HumanMessage(
+            content=(
+                f"The build failed with this error:\n\n{error_logs}"
+                f"{workflow_context}"
+                f"\n\nPlease classify this error (pipeline config vs application code) and fix it."
+            )
+        )
         llm_messages = [
             SystemMessage(content=ERROR_FIXING_PROMPT),
             initial_human

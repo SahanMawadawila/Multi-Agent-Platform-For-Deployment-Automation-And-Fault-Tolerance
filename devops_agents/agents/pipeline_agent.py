@@ -144,15 +144,34 @@ def _buildpack_env_flags(component: dict, component_path: str | None, local_path
     root_npm = os.path.isfile(os.path.join(local_path, "package-lock.json"))
 
     if project_type in ("springboot", "java") or package_manager in ("maven", "gradle"):
-      root_pom = os.path.isfile(os.path.join(local_path, "pom.xml"))
-      root_gradle = os.path.isfile(os.path.join(local_path, "build.gradle")) or os.path.isfile(os.path.join(local_path, "build.gradle.kts"))
+      # Find the highest level pom.xml or build.gradle above the component
+      parent_dir = os.path.dirname(component_path) if component_path != "." else ""
+      found_pom_dir = None
+      found_gradle_dir = None
       
-      if (package_manager == "maven" and root_pom) or (package_manager == "gradle" and root_gradle):
-        build_path = "."
-        if package_manager == "maven":
-          env_flags.append(f"--env BP_MAVEN_BUILT_MODULE={component_path}")
-        elif package_manager == "gradle":
-          env_flags.append(f"--env BP_GRADLE_BUILT_MODULE={component_path}")
+      # Check component's parent directory first, then root
+      for check_dir in [parent_dir, ""]:
+          if check_dir is not None:
+              check_path = os.path.join(local_path, check_dir) if check_dir else local_path
+              if os.path.isfile(os.path.join(check_path, "pom.xml")):
+                  found_pom_dir = check_dir
+                  break
+              if os.path.isfile(os.path.join(check_path, "build.gradle")) or os.path.isfile(os.path.join(check_path, "build.gradle.kts")):
+                  found_gradle_dir = check_dir
+                  break
+
+      if not package_manager and found_pom_dir is not None and project_type in ("springboot", "java"):
+          package_manager = "maven"
+      
+      if package_manager == "maven" and found_pom_dir is not None:
+        build_path = found_pom_dir if found_pom_dir else "."
+        # module path relative to the found pom
+        rel_module = os.path.relpath(component_path, build_path) if build_path != "." else component_path
+        env_flags.append(f"--env BP_MAVEN_BUILT_MODULE={rel_module}")
+      elif package_manager == "gradle" and found_gradle_dir is not None:
+        build_path = found_gradle_dir if found_gradle_dir else "."
+        rel_module = os.path.relpath(component_path, build_path) if build_path != "." else component_path
+        env_flags.append(f"--env BP_GRADLE_BUILT_MODULE={rel_module}")
       else:
         build_path = component_path
     elif project_type in ("node", "nodejs", "javascript", "typescript", "react", "vue", "angular", "frontend") and (root_pnpm or root_yarn or root_npm):
