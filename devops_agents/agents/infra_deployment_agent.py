@@ -22,7 +22,7 @@ async def infra_deployment_agent(state: dict):
     os.makedirs(manifests_path, exist_ok=True)
 
     llm = ChatOpenAI(
-        model="gpt-5.4-mini",
+        model="gpt-5.5",
         api_key=settings.openai_key,
         temperature=0,
     )
@@ -37,7 +37,8 @@ async def infra_deployment_agent(state: dict):
         "1. NEVER use emptyDir for data volumes. MUST use a PersistentVolumeClaim requesting at least 1Gi of storage with `storageClassName: gp2`. "
         "2. DO NOT create any helper, placeholder, mounter, or volume-attacher pods. Only generate the actual StatefulSet/Deployment, Service, PVC, and Secret. "
         "3. StatefulSet Volumes: If you create a standalone PersistentVolumeClaim, you MUST explicitly define a `volumes:` array in the Pod template spec that references this `claimName`, and map it to your `volumeMounts`. DO NOT use an empty `volumeClaimTemplates: []` array. "
-        "4. For liveness and readiness probes, ALWAYS give components plenty of time to start up by adding a startupProbe or setting initialDelaySeconds to at least 90."
+        "4. For liveness and readiness probes, ALWAYS give components plenty of time to start up by adding a startupProbe or setting initialDelaySeconds to at least 90. "
+        "5. Volume Permissions: Any container that runs as a non-root user (like Kafka, Zookeeper, RabbitMQ, ElasticSearch) MUST include `securityContext: fsGroup: 1000` in the Pod spec so it has write permissions to its mounted PersistentVolume data directory."
     )
     
     # Load specific infra fixes dynamically

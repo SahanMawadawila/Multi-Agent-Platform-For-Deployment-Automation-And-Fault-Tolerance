@@ -136,6 +136,27 @@ export function DeploymentPlanEditor({
     onSave(newPlan);
   };
 
+  const handleComponentDelete = () => {
+    if (selectedComponentIndex === null) return;
+
+    const newPlan = { ...editablePlan };
+    const componentNameToDelete = newPlan.components[selectedComponentIndex].name;
+    
+    // Remove component
+    newPlan.components = newPlan.components.filter((_: any, idx: number) => idx !== selectedComponentIndex);
+    
+    // Remove connections associated with this component
+    if (newPlan.connections) {
+      newPlan.connections = newPlan.connections.filter(
+        (conn: any) => conn.from_component !== componentNameToDelete && conn.to_component !== componentNameToDelete
+      );
+    }
+
+    setEditablePlan(newPlan);
+    onSave(newPlan);
+    setSelectedComponentIndex(null);
+  };
+
   const onEdgeClick: EdgeMouseHandler = (_event, edge) => {
     const idx = edge.data?.connectionIndex;
     if (typeof idx === "number") {
@@ -173,12 +194,14 @@ export function DeploymentPlanEditor({
                 component={editablePlan.components[selectedComponentIndex]}
                 onUpdate={handleComponentUpdate}
                 onClose={() => setSelectedComponentIndex(null)}
+                onDelete={handleComponentDelete}
               />
             ) : (
               <ApplicationDetailPanel
                 component={editablePlan.components[selectedComponentIndex]}
                 onUpdate={handleComponentUpdate}
                 onClose={() => setSelectedComponentIndex(null)}
+                onDelete={handleComponentDelete}
               />
             )}
           </div>

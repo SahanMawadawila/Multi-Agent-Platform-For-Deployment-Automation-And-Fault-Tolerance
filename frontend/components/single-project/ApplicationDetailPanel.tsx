@@ -6,12 +6,14 @@ interface ApplicationDetailPanelProps {
   component: any;
   onUpdate: (comp: any) => void;
   onClose: () => void;
+  onDelete?: () => void;
 }
 
 export function ApplicationDetailPanel({
   component,
   onUpdate,
   onClose,
+  onDelete,
 }: ApplicationDetailPanelProps) {
   const [localComp, setLocalComp] = useState<any>(
     JSON.parse(JSON.stringify(component)),
@@ -60,9 +62,16 @@ export function ApplicationDetailPanel({
     <div className="flex flex-col h-full bg-slate-900 border-l border-slate-800 text-slate-200">
       <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900/50">
         <h3 className="font-semibold text-lg">{localComp.name} Settings</h3>
-        <button onClick={onClose} className="text-slate-400 hover:text-white">
-          <X size={20} />
-        </button>
+        <div className="flex items-center gap-3">
+          {onDelete && (
+            <button onClick={onDelete} className="text-red-400 hover:text-red-300" title="Delete Component">
+              <Trash2 size={18} />
+            </button>
+          )}
+          <button onClick={onClose} className="text-slate-400 hover:text-white" title="Close Panel">
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-grow p-5 space-y-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
