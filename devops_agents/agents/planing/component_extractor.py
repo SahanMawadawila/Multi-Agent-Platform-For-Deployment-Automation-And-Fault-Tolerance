@@ -29,6 +29,7 @@ Rules:
   If a .env file has `DB_PORT=5433`, set value="5433".
   Extract values AS-IS from the code — do not modify or rewrite them.
 - If the component is a Spring Boot or Java application, set its `resources.memory_limit` to at least "800Mi" to prevent JVM memory calculator errors during deployment.
+- IMPORTANT: For frontend Single Page Applications (React, Vue, Vite, etc.), set 'project_type' strictly to 'react', 'vue', or 'vite' (NOT 'node').
 - Set ingress.expose true only for user-facing services.
 - For single-app projects, use name "app".
 - Leave image_name empty (it will be generated later).

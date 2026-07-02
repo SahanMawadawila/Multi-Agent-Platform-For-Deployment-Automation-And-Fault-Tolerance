@@ -65,6 +65,9 @@ async def k8s_architect_agent(state):
         # Service should still expose 80 externally even though container runs on 8080
         service_port = 80
     
+    # Force the PORT environment variable so the container (e.g. NGINX) binds to the expected port
+    env_vars["PORT"] = str(container_port)
+    
     data = {
         "app_name": app_name,
         "namespace": namespace,
