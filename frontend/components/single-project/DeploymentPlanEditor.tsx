@@ -121,6 +121,43 @@ export function DeploymentPlanEditor({
     newPlan.components = [...(editablePlan.components || [])];
     newPlan.components[selectedComponentIndex] = updatedComponent;
 
+    // 1. Sync Ingress rules globally
+    const rules: any[] = [];
+    newPlan.components.forEach((comp: any) => {
+      if (comp.ingress?.expose) {
+        rules.push({
+          path: comp.ingress.path_prefix || "/",
+          service: comp.name,
+          port: comp.port,
+        });
+      }
+    });
+    // Sort rules so that "/" is at the end
+    rules.sort((a, b) => (a.path === "/" ? 1 : b.path === "/" ? -1 : a.path.localeCompare(b.path)));
+    
+    if (!newPlan.ingress) {
+      newPlan.ingress = { host: "", tls: true, rules: [] };
+    }
+    newPlan.ingress.rules = rules;
+
+    // 2. Component -> Connection Env Sync
+    if (updatedComponent.env_variables && newPlan.connections) {
+      const updatedKeys = new Map(updatedComponent.env_variables.map((e: any) => [e.key, e.value]));
+      
+      newPlan.connections = newPlan.connections.map((conn: any) => {
+        if (conn.from_component === updatedComponent.name && conn.env_updates) {
+          const newEnvUpdates = conn.env_updates.map((env: any) => {
+            if (updatedKeys.has(env.key)) {
+              return { ...env, value: updatedKeys.get(env.key) };
+            }
+            return env;
+          });
+          return { ...conn, env_updates: newEnvUpdates };
+        }
+        return conn;
+      });
+    }
+
     setEditablePlan(newPlan);
     onSave(newPlan); // Save immediately
   };
@@ -131,6 +168,27 @@ export function DeploymentPlanEditor({
     const newPlan = { ...editablePlan };
     newPlan.connections = [...(editablePlan.connections || [])];
     newPlan.connections[selectedConnectionIndex] = updatedConnection;
+
+    // 3. Connection -> Component Env Sync
+    if (updatedConnection.env_updates && newPlan.components) {
+      newPlan.components = newPlan.components.map((comp: any) => {
+        if (comp.name === updatedConnection.from_component) {
+          const compEnvs = comp.env_variables ? [...comp.env_variables] : [];
+          
+          updatedConnection.env_updates.forEach((connEnv: any) => {
+            const existingIdx = compEnvs.findIndex((e) => e.key === connEnv.key);
+            if (existingIdx >= 0) {
+              compEnvs[existingIdx] = { ...compEnvs[existingIdx], value: connEnv.value };
+            } else {
+              compEnvs.push({ ...connEnv });
+            }
+          });
+          
+          return { ...comp, env_variables: compEnvs };
+        }
+        return comp;
+      });
+    }
 
     setEditablePlan(newPlan);
     onSave(newPlan);
