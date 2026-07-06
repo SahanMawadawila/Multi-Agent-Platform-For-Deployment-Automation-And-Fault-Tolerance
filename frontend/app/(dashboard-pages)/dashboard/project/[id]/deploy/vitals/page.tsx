@@ -33,6 +33,7 @@ type VitalSample = {
   project_id: string;
   namespace: string;
   pod_name: string;
+  service?: string;
   pod_phase?: string | null;
   cpu_millicores: number;
   memory_mebibytes: number;
@@ -97,6 +98,17 @@ function formatMillicores(value: number) {
   return `${percentage.toFixed(1)}%`;
 }
 
+function deriveServiceName(podName: string) {
+  const parts = podName.split("-");
+  if (parts.length >= 3 && /^[a-f0-9]{5,}$/i.test(parts[parts.length - 2])) {
+    return parts.slice(0, -2).join("-");
+  }
+  if (parts.length >= 2 && (/^\d+$/.test(parts[parts.length - 1]) || /^[a-f0-9]{5,}$/i.test(parts[parts.length - 1]))) {
+    return parts.slice(0, -1).join("-");
+  }
+  return podName;
+}
+
 function vitalsBadgeClass(phase?: string | null) {
   switch (phase) {
     case "Running":
@@ -144,6 +156,7 @@ export default function DeployVitalsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [selectedService, setSelectedService] = useState("All");
 
   useEffect(() => {
     if (!token || !projectId) {
@@ -210,11 +223,80 @@ export default function DeployVitalsPage() {
     );
   }, [vitals?.samples]);
 
-  const latestPods = vitals?.latest ?? [];
+  const availableServices = useMemo(() => {
+    const services = new Set<string>();
+    for (const sample of vitals?.latest ?? []) {
+      services.add(sample.service ?? deriveServiceName(sample.pod_name));
+    }
+    return Array.from(services).sort((left, right) => left.localeCompare(right));
+  }, [vitals?.latest]);
+
+  const filteredSamples = useMemo(() => {
+    if (selectedService === "All") {
+      return vitals?.samples ?? [];
+    }
+    return (vitals?.samples ?? []).filter((sample) => (sample.service ?? deriveServiceName(sample.pod_name)) === selectedService);
+  }, [selectedService, vitals?.samples]);
+
+  const filteredLatestPods = useMemo(() => {
+    if (selectedService === "All") {
+      return vitals?.latest ?? [];
+    }
+    return (vitals?.latest ?? []).filter((sample) => (sample.service ?? deriveServiceName(sample.pod_name)) === selectedService);
+  }, [selectedService, vitals?.latest]);
+
+  const selectedTimelineData = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        sampled_at: string;
+        cpu_millicores: number;
+        memory_mebibytes: number;
+        pod_count: number;
+      }
+    >();
+
+    for (const sample of filteredSamples) {
+      const key = sample.sampled_at;
+      const entry = grouped.get(key) ?? {
+        sampled_at: key,
+        cpu_millicores: 0,
+        memory_mebibytes: 0,
+        pod_count: 0,
+      };
+      entry.cpu_millicores += sample.cpu_millicores;
+      entry.memory_mebibytes += sample.memory_mebibytes;
+      entry.pod_count += 1;
+      grouped.set(key, entry);
+    }
+
+    return Array.from(grouped.values()).sort(
+      (left, right) => new Date(left.sampled_at).getTime() - new Date(right.sampled_at).getTime(),
+    );
+  }, [filteredSamples]);
+
+  const activeTimelineData = selectedService === "All" ? timelineData : selectedTimelineData;
+  const latestPods = filteredLatestPods;
+  const activeTotals = useMemo(() => {
+    if (selectedService === "All") {
+      return vitals?.totals ?? { cpu_millicores: 0, memory_mebibytes: 0 };
+    }
+
+    return latestPods.reduce(
+      (totals, pod) => {
+        totals.cpu_millicores += pod.cpu_millicores;
+        totals.memory_mebibytes += pod.memory_mebibytes;
+        return totals;
+      },
+      { cpu_millicores: 0, memory_mebibytes: 0 },
+    );
+  }, [latestPods, selectedService, vitals?.totals]);
 
   if (isLoading && !vitals) {
     return <VitalsSkeleton />;
   }
+
+  const activeServiceLabel = selectedService === "All" ? "all services" : selectedService;
 
   return (
     <div className="space-y-6">
@@ -229,9 +311,25 @@ export default function DeployVitalsPage() {
             CPU and memory samples collected from the Kubernetes Metrics API for the active project namespace.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-slate-400">
-          <RefreshCw size={16} className="text-violet-300" />
-          <span>{lastUpdated ? `Last updated ${lastUpdated}` : "Polling every 10 seconds"}</span>
+        <div className="flex flex-col items-start gap-3 text-sm text-slate-400 lg:items-end">
+          <div className="flex items-center gap-2">
+            <RefreshCw size={16} className="text-violet-300" />
+            <span>{lastUpdated ? `Last updated ${lastUpdated}` : "Polling every 10 seconds"}</span>
+          </div>
+          {availableServices.length > 0 && (
+            <select
+              className="min-w-[220px] rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 outline-none transition-colors focus:border-violet-500"
+              value={selectedService}
+              onChange={(event) => setSelectedService(event.target.value)}
+            >
+              <option value="All">All services</option>
+              {availableServices.map((service) => (
+                <option key={service} value={service}>
+                  {service}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -249,7 +347,7 @@ export default function DeployVitalsPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-400">Tracked Pods</p>
-              <p className="mt-2 text-2xl font-bold text-white">{vitals?.pod_count ?? 0}</p>
+              <p className="mt-2 text-2xl font-bold text-white">{selectedService === "All" ? vitals?.pod_count ?? 0 : latestPods.length}</p>
             </div>
             <Layers3 className="text-violet-300" size={22} />
           </div>
@@ -259,7 +357,7 @@ export default function DeployVitalsPage() {
             <div>
               <p className="text-sm text-slate-400">CPU Total</p>
               <p className="mt-2 text-2xl font-bold text-white">
-                {formatMillicores(vitals?.totals.cpu_millicores ?? 0)}
+                {formatMillicores(activeTotals.cpu_millicores ?? 0)}
               </p>
             </div>
             <Cpu className="text-violet-300" size={22} />
@@ -270,7 +368,7 @@ export default function DeployVitalsPage() {
             <div>
               <p className="text-sm text-slate-400">Memory Total</p>
               <p className="mt-2 text-2xl font-bold text-white">
-                {formatMegabytes(vitals?.totals.memory_mebibytes ?? 0)}
+                {formatMegabytes(activeTotals.memory_mebibytes ?? 0)}
               </p>
             </div>
             <MemoryStick className="text-violet-300" size={22} />
@@ -280,7 +378,7 @@ export default function DeployVitalsPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-400">Samples</p>
-              <p className="mt-2 text-2xl font-bold text-white">{vitals?.sample_count ?? 0}</p>
+              <p className="mt-2 text-2xl font-bold text-white">{selectedService === "All" ? vitals?.sample_count ?? 0 : filteredSamples.length}</p>
             </div>
             <Clock3 className="text-violet-300" size={22} />
           </div>
@@ -292,12 +390,12 @@ export default function DeployVitalsPage() {
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-white">CPU Usage</h2>
-              <p className="text-sm text-slate-400">Total CPU across all pods in the namespace</p>
+              <p className="text-sm text-slate-400">Total CPU across {activeServiceLabel}</p>
             </div>
           </div>
           <div className="h-[320px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={timelineData}>
+              <AreaChart data={activeTimelineData}>
                 <defs>
                   <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.45} />
@@ -330,12 +428,12 @@ export default function DeployVitalsPage() {
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-white">Memory Usage</h2>
-              <p className="text-sm text-slate-400">Total memory across all pods in the namespace</p>
+              <p className="text-sm text-slate-400">Total memory across {activeServiceLabel}</p>
             </div>
           </div>
           <div className="h-[320px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={timelineData}>
+              <LineChart data={activeTimelineData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
                 <XAxis dataKey="sampled_at" tickFormatter={formatTimestamp} stroke="#94a3b8" />
                 <YAxis stroke="#94a3b8" tickFormatter={(value) => `${value} MiB`} />
@@ -363,7 +461,7 @@ export default function DeployVitalsPage() {
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-white">Latest Pod Snapshot</h2>
-            <p className="text-sm text-slate-400">Per-pod status and current metrics from the most recent sample</p>
+            <p className="text-sm text-slate-400">Per-pod status and current metrics from the most recent sample for {activeServiceLabel}</p>
           </div>
         </div>
 

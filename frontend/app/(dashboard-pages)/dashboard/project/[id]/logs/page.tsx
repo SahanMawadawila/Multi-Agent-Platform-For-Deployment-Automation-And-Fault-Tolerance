@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface LogEntry {
   timestamp: string;
   line: string;
+  service?: string;
 }
 
 export default function ProjectLogsPage() {
@@ -19,6 +20,7 @@ export default function ProjectLogsPage() {
   const projectId: string | undefined = Array.isArray(id) ? id[0] : id;
   const [project, setProject] = useState<DetailedProject | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [selectedService, setSelectedService] = useState<string>("All");
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,6 +51,7 @@ export default function ProjectLogsPage() {
           const formattedLogs: LogEntry[] = [];
           if (logsData.data && logsData.data.result) {
             logsData.data.result.forEach((stream: any) => {
+              const serviceName = stream.stream?.app || stream.stream?.container || "unknown";
               if (stream.values) {
                 stream.values.forEach((val: any) => {
                   // val[0] is epoch nanoseconds, val[1] is the log line
@@ -56,6 +59,7 @@ export default function ProjectLogsPage() {
                   formattedLogs.push({
                     timestamp: date.toISOString(),
                     line: val[1],
+                    service: serviceName,
                   });
                 });
               }
@@ -89,6 +93,9 @@ export default function ProjectLogsPage() {
     );
   }
 
+  const availableServices = Array.from(new Set(logs.map(log => log.service || "unknown"))).filter(s => s !== "unknown");
+  const filteredLogs = selectedService === "All" ? logs : logs.filter(log => log.service === selectedService);
+
   return (
     <div className="space-y-6 max-w-full">
       <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -117,9 +124,23 @@ export default function ProjectLogsPage() {
       </div>
 
       <Card className="h-[calc(100vh-250px)] min-h-[500px] flex flex-col overflow-hidden border-slate-800 bg-[#0d1117]">
-        <div className="flex items-center gap-2 p-3 bg-slate-900 border-b border-slate-800 text-slate-400 text-xs font-mono uppercase tracking-wider">
-          <Terminal size={14} className="text-violet-400" />
-          Container Output
+        <div className="flex items-center justify-between p-3 bg-slate-900 border-b border-slate-800 text-slate-400 text-xs font-mono uppercase tracking-wider">
+          <div className="flex items-center gap-2">
+            <Terminal size={14} className="text-violet-400" />
+            Container Output
+          </div>
+          {availableServices.length > 0 && (
+            <select
+              className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-300 outline-none focus:border-violet-500"
+              value={selectedService}
+              onChange={(e) => setSelectedService(e.target.value)}
+            >
+              <option value="All">All Services</option>
+              {availableServices.map(service => (
+                <option key={service} value={service}>{service}</option>
+              ))}
+            </select>
+          )}
         </div>
         
         <div className="flex-1 p-4 overflow-y-auto font-mono text-sm leading-relaxed scroll-smooth text-slate-300">
@@ -133,13 +154,20 @@ export default function ProjectLogsPage() {
               <p>No deployment logs found for this project yet.</p>
               <p className="text-xs mt-2 opacity-60">Make sure your app is actively running.</p>
             </div>
+          ) : filteredLogs.length === 0 ? (
+            <div className="text-slate-500 flex flex-col items-center justify-center h-full">
+              <p>No logs found for service &quot;{selectedService}&quot;.</p>
+            </div>
           ) : (
             <div className="space-y-1">
-              {logs.map((log, i) => (
+              {filteredLogs.map((log, i) => (
                 <div key={i} className="hover:bg-slate-800/50 px-2 rounded -mx-2 flex gap-4">
                   <span className="text-slate-600 shrink-0 w-48 truncate">
                     {new Date(log.timestamp).toLocaleString()}
                   </span>
+                  {selectedService === "All" && log.service && log.service !== "unknown" && (
+                    <span className="text-violet-400 shrink-0 min-w-[80px] truncate">[{log.service}]</span>
+                  )}
                   <span className="break-all whitespace-pre-wrap text-slate-300">{log.line}</span>
                 </div>
               ))}

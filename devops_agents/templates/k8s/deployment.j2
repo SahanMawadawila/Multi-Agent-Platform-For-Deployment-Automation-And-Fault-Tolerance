@@ -18,6 +18,7 @@ spec:
       containers:
       - name: {{ app_name }}
         image: {{ image_url }}
+        imagePullPolicy: Always
         ports:
         - containerPort: {{ port }}
         {% if env_vars %}
