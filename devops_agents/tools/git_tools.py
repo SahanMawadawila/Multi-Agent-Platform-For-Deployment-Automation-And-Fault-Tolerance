@@ -21,6 +21,12 @@ class AsyncGitTools:
                 # If exists, pull latest 
                 try:
                     repo = git.Repo(clone_dir)
+                    # Ensure we're on the default branch before pulling
+                    # so build branches are created from the latest code
+                    for default_branch in ['main', 'master']:
+                        if default_branch in repo.heads:
+                            repo.heads[default_branch].checkout()
+                            break
                     repo.remotes.origin.pull()
                     return clone_dir
                 except:
