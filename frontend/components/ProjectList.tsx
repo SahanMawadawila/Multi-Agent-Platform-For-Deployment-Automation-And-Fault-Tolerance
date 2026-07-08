@@ -134,7 +134,7 @@ export default function ProjectList() {
         )}
         {projects.map((project, index) => (
           <Link
-            href={`/dashboard/project/${project.project_id}/plan`}
+            href={`/dashboard/project/${project.project_id}`}
             key={index}
             className="block"
           >
