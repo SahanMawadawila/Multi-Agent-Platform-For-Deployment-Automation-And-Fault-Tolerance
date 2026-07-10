@@ -29,14 +29,12 @@ spec:
         {% endfor %}
         {% endif %}
         livenessProbe:
-          httpGet:
-            path: {{ health_check_path }}
+          tcpSocket:
             port: {{ port }}
           initialDelaySeconds: 60
           periodSeconds: 10
         readinessProbe:
-          httpGet:
-            path: {{ health_check_path }}
+          tcpSocket:
             port: {{ port }}
           initialDelaySeconds: 60
           periodSeconds: 15

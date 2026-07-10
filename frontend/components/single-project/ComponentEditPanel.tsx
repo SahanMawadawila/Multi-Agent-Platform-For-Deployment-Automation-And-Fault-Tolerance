@@ -93,6 +93,17 @@ export function ComponentEditPanel({ component, onUpdate, onClose }: ComponentEd
                                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFieldChange('run_command', e.target.value)}
                                     />
                                 </div>
+                                {['react', 'vue', 'vite', 'angular', 'svelte', 'frontend', 'nextjs', 'nextjs-static'].includes((localComp.project_type || '').toLowerCase()) && (
+                                <div>
+                                    <label className="text-xs text-slate-400 mb-1 block">Build Output Directory</label>
+                                    <input 
+                                        className="w-full bg-slate-800/50 border border-slate-700 rounded-md text-sm h-8 px-2 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                                        placeholder="e.g. dist, build, or .next"
+                                        value={localComp.build_output_dir || ''} 
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFieldChange('build_output_dir', e.target.value)}
+                                    />
+                                </div>
+                                )}
                             </>
                         )}
                         {localComp.type === 'infrastructure' && (

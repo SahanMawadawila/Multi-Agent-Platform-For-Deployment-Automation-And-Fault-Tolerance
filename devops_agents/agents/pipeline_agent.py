@@ -123,7 +123,10 @@ def _buildpack_env_flags(component: dict, component_path: str | None, local_path
   # Frontend/React: tell buildpacks to use NGINX to serve static files
   if is_frontend:
     env_flags.append("--env BP_WEB_SERVER=nginx")
-    env_flags.append("--env BP_WEB_SERVER_ROOT=dist")
+    
+    web_server_root = component.get("build_output_dir") or "dist"
+      
+    env_flags.append(f"--env BP_WEB_SERVER_ROOT={web_server_root}")
     env_flags.append("--env BP_NODE_RUN_SCRIPTS=build")
 
   # Version pinning for buildpacks (optional but improves reliability)

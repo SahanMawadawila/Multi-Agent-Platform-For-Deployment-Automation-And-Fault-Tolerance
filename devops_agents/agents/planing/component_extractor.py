@@ -20,7 +20,6 @@ message brokers, or any other infrastructure components.
 
 Rules:
 - Find each deployable app component and fill all ApplicationComponent fields.
-- Read actual source/config files to find health check paths (do not guess).
 - Use package.json/pom.xml/pyproject for build/run commands and versions.
 - Populate env_variables with variables that are likely to change at runtime (database URLs,
   credentials, ports, external service URLs, API keys, feature flags).
@@ -30,6 +29,7 @@ Rules:
   Extract values AS-IS from the code — do not modify or rewrite them.
 - If the component is a Spring Boot or Java application, set its `resources.memory_limit` to at least "800Mi" to prevent JVM memory calculator errors during deployment.
 - IMPORTANT: For frontend Single Page Applications (React, Vue, Vite, etc.), set 'project_type' strictly to 'react', 'vue', or 'vite' (NOT 'node').
+- If the component is a frontend application, explicitly set `build_output_dir` (e.g., "build" if it uses react-scripts, "dist" for Vite/Vue).
 - Set ingress.expose true only for user-facing services.
 - For single-app projects, use name "app".
 - Leave image_name empty (it will be generated later).
